@@ -40,7 +40,7 @@ cp .env.example .env
 python -m bot.main
 
 ---
-"""
+```
 ## Структура проекта
 ├── bot/ 
 │   ├── handlers/           # Обработчики сообщений 
@@ -54,7 +54,7 @@ python -m bot.main
 ├── requirements.txt        # pip (альтернатива Poetry) 
 ├── .env.example            # Пример переменных окружения 
 └── README.md               # Документация проекта
-"""
+```
 ---
 
 ## Переменные окружения (.env)
