@@ -1,4 +1,4 @@
-﻿[tool.poetry]
+[tool.poetry]
 name = "gpttg"
 version = "1.0.0"
 description = "Telegram-бот на OpenAI Responses API с мультимодальностью и учётом расходов"
