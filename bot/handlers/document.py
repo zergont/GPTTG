@@ -11,15 +11,9 @@ import aiohttp
 
 router = Router()
 
-# Поддерживаемые типы документов
+# Поддерживаемые типы документов (только PDF)
 SUPPORTED_DOCUMENT_TYPES = {
     'application/pdf': '📄 PDF',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '📝 Word документ',
-    'application/msword': '📝 Word документ',
-    'text/plain': '📄 Текстовый файл',
-    'text/csv': '📊 CSV файл',
-    'text/markdown': '📄 Markdown',
-    'application/json': '📄 JSON файл',
 }
 
 @router.message(lambda m: m.document)
@@ -39,18 +33,14 @@ async def handle_document(msg: Message):
         mime_type = doc.mime_type
         file_extension = doc.file_name.lower().split('.')[-1] if doc.file_name else ''
 
-        # Проверяем поддержку файла
-        is_supported = (
-            mime_type in SUPPORTED_DOCUMENT_TYPES or 
-            file_extension in ['pdf', 'docx', 'doc', 'txt', 'csv', 'md', 'json']
-        )
+        # Разрешаем только PDF
+        is_supported = mime_type == 'application/pdf' or file_extension == 'pdf'
 
         if not is_supported:
-            supported_list = "\n".join([f"• {name}" for name in SUPPORTED_DOCUMENT_TYPES.values()])
             await msg.reply(
-                f"📄 **Неподдерживаемый тип файла.**\n\n"
-                f"**Поддерживаются:**\n{supported_list}\n\n"
-                f"💡 **Для других форматов:** конвертируйте в PDF или текст"
+                "📄 **Неподдерживаемый тип файла.**\n\n"
+                "**Поддерживается только PDF-документ.**\n\n"
+                "💡 Для других форматов: конвертируйте файл в PDF."
             )
             return
 
@@ -68,72 +58,22 @@ async def handle_document(msg: Message):
 
         await status_msg.edit_text(f"📄 Обрабатываю {file_type}...")
 
-        # Для текстовых файлов используем прямую передачу текста
-        if mime_type in ['text/plain', 'text/csv', 'text/markdown', 'application/json']:
-            try:
-                # Пробуем декодировать как текст
-                text_content = None
-                for encoding in ['utf-8', 'utf-8-sig', 'cp1251', 'iso-8859-1']:
-                    try:
-                        text_content = data.decode(encoding)
-                        break
-                    except UnicodeDecodeError:
-                        continue
+        # Загружаем PDF-файл в OpenAI с purpose="user_data"
+        file_id = await OpenAIClient.upload_file(data, doc.file_name, "user_data")
 
-                if text_content is None:
-                    raise UnicodeDecodeError("Не удалось декодировать файл")
-
-                # Ограничиваем размер для экономии токенов
-                if len(text_content) > 100000:
-                    text_content = text_content[:100000] + "\n\n... (файл обрезан)"
-
-                # Отправляем как обычное текстовое сообщение
-                content = [
-                    {
-                        "type": "message",
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": f"{caption}\n\n**Файл:** {doc.file_name}\n**Содержимое:**\n```\n{text_content}\n```"}
-                        ]
-                    }
+        # Формируем запрос с файлом и текстом
+        content = [
+            {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {"type": "input_file", "file_id": file_id},
+                    {"type": "input_text", "text": f"{caption}\n\nФайл: {doc.file_name}"}
                 ]
+            }
+        ]
 
-                response_text = await OpenAIClient.responses_request(msg.chat.id, content)
-
-            except UnicodeDecodeError:
-                # Если не удалось декодировать, загружаем как файл с purpose="user_data"
-                file_id = await OpenAIClient.upload_file(data, doc.file_name, "user_data")
-
-                content = [
-                    {
-                        "type": "message",
-                        "role": "user",
-                        "content": [
-                            {"type": "input_file", "file_id": file_id},
-                            {"type": "input_text", "text": caption}
-                        ]
-                    }
-                ]
-
-                response_text = await OpenAIClient.responses_request(msg.chat.id, content)
-
-        else:
-            # Для PDF и Word документов загружаем файл в OpenAI с purpose="user_data"
-            file_id = await OpenAIClient.upload_file(data, doc.file_name, "user_data")
-
-            # Формируем запрос с файлом и текстом
-            content = [
-                {
-                    "type": "message",
-                    "role": "user",
-                    "content": [
-                        {"type": "input_file", "file_id": file_id},
-                        {"type": "input_text", "text": f"{caption}\n\nФайл: {doc.file_name}"}
-                    ]
-                }
-            ]
-
-            response_text = await OpenAIClient.responses_request(msg.chat.id, content)
+        response_text = await OpenAIClient.responses_request(msg.chat.id, content)
 
         await status_msg.delete()
 

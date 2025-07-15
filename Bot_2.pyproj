@@ -25,9 +25,11 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="bot\handlers\document.py" />
+    <Compile Include="bot\handlers\message_handler.py" />
     <Compile Include="bot\main.py" />
     <Compile Include="bot\utils\http_client.py" />
     <Compile Include="bot\utils\markdown.py" />
+    <Compile Include="bot\utils\progress.py" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="gitignore .gitignore" />

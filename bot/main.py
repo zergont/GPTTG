@@ -9,7 +9,7 @@ from bot.middlewares import StartupMiddleware, UserMiddleware, ErrorMiddleware
 from bot import router
 from bot.utils.log import logger
 from bot.utils.http_client import close_session
-
+from bot.handlers.message_handler import router as message_router
 
 async def main():
     """Основная функция запуска бота."""
@@ -29,6 +29,7 @@ async def main():
     
     # Регистрируем роутеры
     dp.include_router(router)
+    dp.include_router(message_router)
     
     logger.info("Starting bot…")
     
@@ -46,10 +47,12 @@ if __name__ == "__main__":
 """Голосовые сообщения → Whisper → текст → модель."""
 from aiogram import Router
 from aiogram.types import Message
+import asyncio
 from bot.config import settings
 from bot.utils.openai_client import OpenAIClient
 from bot.utils.http_client import download_file
 from bot.utils.log import logger
+from bot.utils.progress import show_progress_indicator
 import io
 import openai
 import aiohttp
@@ -66,7 +69,11 @@ async def handle_voice(msg: Message):
     file = await msg.bot.get_file(v.file_id)
     url = f"https://api.telegram.org/file/bot{settings.bot_token}/{file.file_path}"
 
+    # Отправляем первоначальное сообщение
     status_msg = await msg.answer("🎤 Обрабатываю голосовое сообщение...")
+    
+    # Запускаем индикатор прогресса в фоновом режиме
+    progress_task = asyncio.create_task(show_progress_indicator(msg.bot, msg.chat.id))
 
     try:
         # Используем оптимизированный HTTP клиент
@@ -79,21 +86,33 @@ async def handle_voice(msg: Message):
         text = await OpenAIClient.whisper(audio_file, msg.chat.id, msg.from_user.id)
         
         if not text.strip():
+            progress_task.cancel()
             await status_msg.edit_text("❌ Не удалось распознать речь в голосовом сообщении")
             return
 
+        # Отменяем индикатор и обновляем статус
+        progress_task.cancel()
         await status_msg.edit_text(f"🗣 Вы сказали: {text}")
 
+        # Запускаем новый индикатор для ответа модели
+        progress_task = asyncio.create_task(show_progress_indicator(msg.bot, msg.chat.id))
+        
         # Получаем ответ от модели
         content = [{"type": "message", "role": "user", "content": text}]
         response_text = await OpenAIClient.responses_request(msg.chat.id, content)
+        
+        # Отменяем индикатор и отправляем ответ
+        progress_task.cancel()
         await msg.answer(response_text)
 
     except aiohttp.ClientError as e:
+        progress_task.cancel()
         logger.error(f"Ошибка сети при загрузке голосового файла: {e}")
         await status_msg.edit_text("❌ Ошибка загрузки голосового файла. Попробуйте позже.")
     except openai.APITimeoutError:
+        progress_task.cancel()
         await status_msg.edit_text("⏳ Время ожидания ответа от OpenAI истекло. Попробуйте ещё раз позже.")
     except Exception as e:
+        progress_task.cancel()
         logger.error(f"Ошибка при обработке голосового сообщения: {e}")
         await status_msg.edit_text(f"❌ Произошла ошибка: {str(e)[:100]}...")

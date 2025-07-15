@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import io
 
 import backoff
@@ -14,9 +14,10 @@ from bot.config import settings
 from bot.utils.db import get_conn
 from bot.utils.log import logger
 
+# Увеличен таймаут для мультимодальных запросов
 client = AsyncOpenAI(
     api_key=settings.openai_api_key,
-    timeout=30,
+    timeout=60,  # Увеличен с 30 до 60 секунд для работы с файлами
     max_retries=2
 )
 
@@ -171,68 +172,17 @@ class OpenAIClient:
                 )
                 await db.commit()
 
-            if response.output and len(response.output) > 0:
-                message = response.output[0]
-                if hasattr(message, 'content') and message.content:
-                    return message.content[0].text
+            # Улучшенная обработка ответа
+            if response.output:
+                try:
+                    for message in response.output:
+                        if hasattr(message, 'content') and message.content:
+                            for content_item in message.content:
+                                if hasattr(content_item, 'text') and content_item.text:
+                                    return content_item.text
+                                elif getattr(content_item, 'type', '') == 'output_text' and hasattr(content_item, 'text'):
+                                    return content_item.text
+                except Exception as e:
+                    logger.error(f"Ошибка при обработке ответа: {e}")
 
-            logger.warning("Пустой ответ от OpenAI")
-            return "Извините, не удалось получить ответ от ассистента"
-
-    @staticmethod
-    @backoff.on_exception(backoff.expo, (OpenAIError, ClientError), max_tries=3)
-    async def dalle(prompt: str, size: str, chat_id: int, user_id: int) -> str:
-        async with OpenAIClient.RATE_LIMIT:
-            request_params = {
-                "model": "dall-e-3",
-                "prompt": prompt,
-                "size": size,
-                "quality": "standard"
-            }
-            if getattr(settings, "debug_mode", False):
-                logger.info(f"[DEBUG] DALL-E REQUEST: {request_params}")
-            response = await client.images.generate(**request_params)
-            if getattr(settings, "debug_mode", False):
-                logger.info(f"[DEBUG] DALL-E RESPONSE: {response}")
-            await _insert_cost(chat_id, user_id, settings.dalle_price, "dall-e-3")
-            return response.data[0].url
-
-    @staticmethod
-    @backoff.on_exception(backoff.expo, (OpenAIError, ClientError), max_tries=3)
-    async def whisper(audio_file: io.BytesIO, chat_id: int, user_id: int) -> str:
-        async with OpenAIClient.RATE_LIMIT:
-            audio_file.seek(0)
-            request_params = {
-                "file": audio_file,
-                "model": "whisper-1",
-                "language": "ru"
-            }
-            if getattr(settings, "debug_mode", False):
-                logger.info(f"[DEBUG] WHISPER REQUEST: {request_params}")
-            response = await client.audio.transcriptions.create(**request_params)
-            if getattr(settings, "debug_mode", False):
-                logger.info(f"[DEBUG] WHISPER RESPONSE: {response}")
-            await _insert_cost(chat_id, user_id, settings.whisper_price, "whisper-1")
-            return response.text.strip()
-
-    @staticmethod
-    def download_file(file_id: str) -> bytes:
-        try:
-            file_info = openai.files.retrieve(file_id)
-            if file_info.purpose not in ("assistants_output", "batch_output", "fine-tune-results"):
-                raise ValueError("Скачивание разрешено только для output-файлов OpenAI.")
-            return openai.files.content(file_id)
-        except openai.OpenAIError as e:
-            if "Not allowed to download files of purpose" in str(e):
-                logger.error("Попытка скачать файл с неподдерживаемым purpose. Разрешено только для output-файлов.")
-            else:
-                logger.error(f"Ошибка OpenAI: {e}")
-            raise
-
-async def _insert_cost(chat_id: int, user_id: int, cost: float, model: str):
-    async with get_conn() as db:
-        await db.execute(
-            "INSERT INTO usage(chat_id, user_id, cost, model) VALUES (?, ?, ?, ?)",
-            (chat_id, user_id, cost, model),
-        )
-        await db.commit()
+           
