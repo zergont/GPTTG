@@ -27,6 +27,7 @@
     <Compile Include="bot\handlers\document.py" />
     <Compile Include="bot\main.py" />
     <Compile Include="bot\utils\http_client.py" />
+    <Compile Include="bot\utils\markdown.py" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="gitignore .gitignore" />

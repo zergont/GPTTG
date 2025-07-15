@@ -90,6 +90,7 @@ class Settings:
     whisper_price: float = float(_env("WHISPER_PRICE", "0.006"))
     dalle_price: float = float(_env("DALLE_PRICE", "0.040"))
     max_file_mb: int = int(_env("MAX_FILE_MB", "20"))  # Максимальный размер файла в МБ
+    debug_mode: bool = bool(int(_env("DEBUG_MODE", "0")))  # <-- добавить эту строку
 
 # Создаем экземпляр настроек
 settings = Settings()

@@ -38,6 +38,8 @@ class OpenAIClient:
                     purpose=purpose
                 )
                 logger.info(f"Файл загружен с ID: {file_response.id}")
+                if getattr(settings, "debug_mode", False):
+                    logger.info(f"[DEBUG] UPLOAD FILE RESPONSE: {file_response}")
                 return file_response.id
             except Exception as e:
                 logger.error(f"Ошибка загрузки файла: {e}")
@@ -134,6 +136,10 @@ class OpenAIClient:
                 "store": True
             }
 
+            # DEBUG: выводим запрос
+            if getattr(settings, "debug_mode", False):
+                logger.info(f"[DEBUG] OpenAI REQUEST: {request_params}")
+
             try:
                 response = await client.responses.create(**request_params)
             except openai.APITimeoutError:
@@ -146,6 +152,10 @@ class OpenAIClient:
             except Exception as e:
                 logger.error(f"OpenAI: неожиданная ошибка: {e}")
                 raise
+
+            # DEBUG: выводим ответ
+            if getattr(settings, "debug_mode", False):
+                logger.info(f"[DEBUG] OpenAI RESPONSE: {response}")
 
             usage = response.usage.total_tokens
             cost = usage / 1000 * settings.openai_price_per_1k_tokens
@@ -173,12 +183,17 @@ class OpenAIClient:
     @backoff.on_exception(backoff.expo, (OpenAIError, ClientError), max_tries=3)
     async def dalle(prompt: str, size: str, chat_id: int, user_id: int) -> str:
         async with OpenAIClient.RATE_LIMIT:
-            response = await client.images.generate(
-                model="dall-e-3",
-                prompt=prompt,
-                size=size,
-                quality="standard"
-            )
+            request_params = {
+                "model": "dall-e-3",
+                "prompt": prompt,
+                "size": size,
+                "quality": "standard"
+            }
+            if getattr(settings, "debug_mode", False):
+                logger.info(f"[DEBUG] DALL-E REQUEST: {request_params}")
+            response = await client.images.generate(**request_params)
+            if getattr(settings, "debug_mode", False):
+                logger.info(f"[DEBUG] DALL-E RESPONSE: {response}")
             await _insert_cost(chat_id, user_id, settings.dalle_price, "dall-e-3")
             return response.data[0].url
 
@@ -187,11 +202,16 @@ class OpenAIClient:
     async def whisper(audio_file: io.BytesIO, chat_id: int, user_id: int) -> str:
         async with OpenAIClient.RATE_LIMIT:
             audio_file.seek(0)
-            response = await client.audio.transcriptions.create(
-                file=audio_file,
-                model="whisper-1",
-                language="ru"
-            )
+            request_params = {
+                "file": audio_file,
+                "model": "whisper-1",
+                "language": "ru"
+            }
+            if getattr(settings, "debug_mode", False):
+                logger.info(f"[DEBUG] WHISPER REQUEST: {request_params}")
+            response = await client.audio.transcriptions.create(**request_params)
+            if getattr(settings, "debug_mode", False):
+                logger.info(f"[DEBUG] WHISPER RESPONSE: {response}")
             await _insert_cost(chat_id, user_id, settings.whisper_price, "whisper-1")
             return response.text.strip()
 

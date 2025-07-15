@@ -1,6 +1,7 @@
 """Базовая настройка логирования (stdout, уровень INFO)."""
 import logging
 import sys
+from bot.config import settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -9,3 +10,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("bot")
+
+if getattr(settings, "debug_mode", False):
+    logger.setLevel(logging.DEBUG)

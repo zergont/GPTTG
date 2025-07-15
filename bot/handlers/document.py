@@ -5,6 +5,7 @@ from bot.config import settings
 from bot.utils.openai_client import OpenAIClient
 from bot.utils.http_client import download_file
 from bot.utils.log import logger
+from bot.utils.markdown import escape_markdown_v2
 import openai
 import aiohttp
 
@@ -139,16 +140,11 @@ async def handle_document(msg: Message):
         # Отправляем результат
         result_text = f"📄 **Анализ файла {doc.file_name}:**\n\n{response_text}"
 
-        # Если ответ слишком длинный, разбиваем на части
-        if len(result_text) > 4000:
-            await msg.answer(f"📄 **Анализ файла {doc.file_name}:**", parse_mode="Markdown")
-
-            # Разбиваем ответ на куски
-            chunks = [response_text[i:i+3800] for i in range(0, len(response_text), 3800)]
-            for i, chunk in enumerate(chunks, 1):
-                await msg.answer(f"**Часть {i}:**\n\n{chunk}", parse_mode="Markdown")
-        else:
-            await msg.answer(result_text, parse_mode="Markdown")
+        # Экранируем текст для MarkdownV2
+        safe_text = escape_markdown_v2(result_text)
+        MAX_LEN = 4096
+        for i in range(0, len(safe_text), MAX_LEN):
+            await msg.answer(safe_text[i:i+MAX_LEN], parse_mode="MarkdownV2")
 
     except openai.BadRequestError as e:
         logger.error(f"Ошибка OpenAI при обработке файла: {e}")
