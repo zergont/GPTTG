@@ -27,8 +27,8 @@ class OpenAIClient:
     RATE_LIMIT = asyncio.Semaphore(4)
 
     @classmethod
-    async def upload_file(cls, file_data: bytes, filename: str, purpose: str = "user_data") -> str:
-        """Загружает файл в OpenAI и возвращает file_id."""
+    async def upload_file(cls, file_data: bytes, filename: str, purpose: str = "user_data", chat_id: int | None = None) -> str:
+        """Загружает файл в OpenAI, возвращает file_id и сохраняет его в БД если chat_id указан."""
         async with cls.RATE_LIMIT:
             logger.info(f"Загружаем файл {filename} в OpenAI")
             file_obj = io.BytesIO(file_data)
@@ -39,6 +39,9 @@ class OpenAIClient:
                     purpose=purpose
                 )
                 logger.info(f"Файл загружен с ID: {file_response.id}")
+                if chat_id is not None:
+                    from bot.utils.db import save_openai_file_id
+                    await save_openai_file_id(chat_id, file_response.id)
                 if getattr(settings, "debug_mode", False):
                     logger.info(f"[DEBUG] UPLOAD FILE RESPONSE: {file_response}")
                 return file_response.id
@@ -51,6 +54,21 @@ class OpenAIClient:
             except Exception as e:
                 logger.error(f"Непредвиденная ошибка загрузки файла: {e}")
                 raise
+
+    @classmethod
+    async def delete_files_by_chat(cls, chat_id: int):
+        """Удаляет все файлы, загруженные этим чатом в OpenAI, и очищает их из БД."""
+        from bot.utils.db import get_openai_file_ids_by_chat, delete_openai_file_ids_by_chat
+        file_ids = await get_openai_file_ids_by_chat(chat_id)
+        deleted = 0
+        for file_id in file_ids:
+            try:
+                await client.files.delete(file_id)
+                deleted += 1
+            except Exception as e:
+                logger.error(f"Ошибка удаления файла {file_id} из OpenAI: {e}")
+        await delete_openai_file_ids_by_chat(chat_id)
+        logger.info(f"Удалено {deleted} файлов OpenAI для чата {chat_id}")
 
     @classmethod
     async def get_current_model(cls) -> str:

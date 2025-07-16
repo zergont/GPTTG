@@ -20,8 +20,9 @@ SUPPORTED_DOCUMENT_TYPES = {
 
 @router.message(lambda m: m.document)
 async def handle_document(msg: Message):
-    """Обрабатывает загруженные документы через OpenAI Files API."""
-    progress_task = None
+    """Обрабатывает загруженные документы через OpenAI Files API с явной индикацией загрузки и анализа."""
+    upload_task = None
+    analyze_task = None
     try:
         doc: Document = msg.document
 
@@ -53,16 +54,28 @@ async def handle_document(msg: Message):
         file = await msg.bot.get_file(doc.file_id)
         file_url = f"https://api.telegram.org/file/bot{settings.bot_token}/{file.file_path}"
 
-        # Запускаем индикатор прогресса вместо статического сообщения
-        progress_task = asyncio.create_task(
-            show_progress_indicator(msg.bot, msg.chat.id, max_time=180)  # Больше времени для PDF
+        # Индикатор загрузки файла
+        upload_task = asyncio.create_task(
+            show_progress_indicator(msg.bot, msg.chat.id, max_time=120)
         )
+        try:
+            # Загружаем файл из Telegram
+            data = await download_file(file_url)
 
-        # Загружаем файл из Telegram
-        data = await download_file(file_url)
+            # Загружаем PDF-файл в OpenAI с purpose="user_data"
+            file_id = await OpenAIClient.upload_file(data, doc.file_name, "user_data", chat_id=msg.chat.id)
+        except Exception as e:
+            if upload_task and not upload_task.done():
+                upload_task.cancel()
+            await msg.answer(f"❌ Ошибка загрузки файла: {e}")
+            return
+        if upload_task and not upload_task.done():
+            upload_task.cancel()
 
-        # Загружаем PDF-файл в OpenAI с purpose="user_data"
-        file_id = await OpenAIClient.upload_file(data, doc.file_name, "user_data")
+        # Индикатор анализа документа
+        analyze_task = asyncio.create_task(
+            show_progress_indicator(msg.bot, msg.chat.id, max_time=180)
+        )
 
         # Формируем запрос с файлом и текстом
         content = [
@@ -76,7 +89,15 @@ async def handle_document(msg: Message):
             }
         ]
 
-        response_text = await OpenAIClient.responses_request(msg.chat.id, content)
+        try:
+            response_text = await OpenAIClient.responses_request(msg.chat.id, content)
+        except Exception as e:
+            if analyze_task and not analyze_task.done():
+                analyze_task.cancel()
+            await msg.answer(f"❌ Ошибка анализа документа: {e}")
+            return
+        if analyze_task and not analyze_task.done():
+            analyze_task.cancel()
 
         # Отправляем результат
         result_text = f"📄 **Анализ файла {doc.file_name}:**\n\n{response_text}"
@@ -87,35 +108,13 @@ async def handle_document(msg: Message):
         for i in range(0, len(safe_text), MAX_LEN):
             await msg.answer(safe_text[i:i+MAX_LEN], parse_mode="MarkdownV2")
 
-    except openai.BadRequestError as e:
-        logger.error(f"Ошибка OpenAI при обработке файла: {e}")
-        if "no text could be extracted" in str(e).lower():
-            await msg.answer(
-                f"❌ Не удалось извлечь текст из файла.\n\n"
-                f"💡 **Возможные причины:**\n"
-                f"• Файл содержит только изображения (сканированный PDF)\n"
-                f"• Файл поврежден или зашифрован\n\n"
-                f"**Попробуйте:**\n"
-                f"• Сделать скриншоты страниц и отправить как изображения\n"
-                f"• Конвертировать в текстовый формат"
-            )
-        else:
-            await msg.answer(f"❌ Ошибка обработки файла: {e}")
-
-    except aiohttp.ClientError as e:
-        logger.error(f"Ошибка загрузки файла: {e}")
-        await msg.answer("❌ Ошибка загрузки файла. Попробуйте позже.")
-
-    except openai.APITimeoutError:
-        await msg.answer("⏳ Время ожидания ответа от OpenAI истекло. Попробуйте ещё раз позже.")
-
     except Exception as e:
+        if upload_task and not upload_task.done():
+            upload_task.cancel()
+        if analyze_task and not analyze_task.done():
+            analyze_task.cancel()
         logger.error(f"Ошибка при обработке документа: {e}", exc_info=True)
         try:
             await msg.answer("❌ Произошла непредвиденная ошибка при обработке документа.")
         except Exception:
             pass
-    finally:
-        # Гарантированно отменяем задачу индикации
-        if progress_task and not progress_task.done():
-            progress_task.cancel()

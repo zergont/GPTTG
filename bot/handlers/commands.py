@@ -152,14 +152,17 @@ async def callback_setmodel(callback: CallbackQuery):
 # ——— /reset —————————————————————————————————————————————— #
 @router.message(F.text.startswith("/reset"))
 async def cmd_reset(msg: Message):
-    """Удаляет сохранённый previous_response_id для чата."""
+    """Удаляет сохранённый previous_response_id и все файлы OpenAI для чата."""
+    # Удаляем файлы из OpenAI и БД
+    await OpenAIClient.delete_files_by_chat(msg.chat.id)
+    # Очищаем историю чата
     async with get_conn() as db:
         await db.execute(
             "DELETE FROM chat_history WHERE chat_id = ?",
             (msg.chat.id,)
         )
         await db.commit()
-    await msg.answer("🗑 История очищена! Следующий запрос начнет новый диалог.", 
+    await msg.answer("🗑 История и файлы очищены! Следующий запрос начнет новый диалог.", 
                     reply_markup=main_kb(msg.from_user.id == settings.admin_id))
 
 
