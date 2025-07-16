@@ -9,6 +9,7 @@
 * Учёт токенов и стоимости в **SQLite**  
 * **Ролевые клавиатуры** (пользователь / админ)  
 * Асинхронность, таймауты, автоматический back‑off  
+* Пошаговая генерация изображений с выбором формата (вертикальный/горизонтальный)
 
 ---
 
@@ -30,10 +31,10 @@
 > Пропустите этот шаг, если `python >= 3.9`, `pip` и `poetry` уже есть в `$PATH`.
 
 ### Проверяем Python и pip
-python --version          # >= 3.9
-python -m pip --version
+python3 --version          # >= 3.9
+python3 -m pip --version
 ### Устанавливаем pip (если отсутствует)
-python -m ensurepip --upgrade
+python3 -m ensurepip --upgrade
 ### Устанавливаем Poetry
 
 <details>
@@ -61,7 +62,7 @@ cd GPTTG
 poetry install          # Poetry сам создаст .venv
 poetry shell            # активировать окружение
 #### Способ B — venv + pip
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate           # Windows: .venv\Scripts\activate
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -71,7 +72,7 @@ nano .env       # или любой редактор
 Заполните обязательные ключи (`BOT_TOKEN`, `OPENAI_API_KEY`, `ADMIN_ID`).
 
 ### 4. Запустите бота
-python -m bot.main
+python3 -m bot.main
 > При первом запуске создаётся база `gpttg.db` и таблицы статистики.
 
 ---
@@ -88,6 +89,7 @@ python -m bot.main
 | `WHISPER_PRICE` | Цена расшифровки 1 мин аудио (USD) | `0.006` | `0.006` |
 | `DALLE_PRICE` | Цена генерации изображения (USD) | `0.040` | `0.040` |
 | `MAX_FILE_MB` | Максимальный размер файла, МБ | `20` | `20` |
+| `DEBUG_MODE` | Включить подробный лог (0/1) | `1` | `0` |
 
 ---
 
@@ -130,8 +132,12 @@ GPTTG/
 Бот: Вы сказали: «Расскажи анекдот»
      Конечно! Вот забавный анекдот для вас…
 
-Пользователь: /img космический кот в скафандре
-Бот: *генерирует изображение с космическим котом*
+Пользователь: /img
+Бот: Опишите, что нарисовать…
+Пользователь: Кот в космосе
+Бот: Выберите формат: вертикальный или горизонтальный
+Бот: *генерирует изображение с котом в космосе*
+
 ---
 
 ## Responses API: особенности
@@ -139,15 +145,26 @@ GPTTG/
 OpenAI Responses API позволяет сохранять контекст диалога без необходимости хранить всю историю сообщений:
 
 Пример запроса к Responses API
-response = await client.responses.create( model="gpt-4o", input=[{"type": "message", "content": "Привет, как дела?", "role": "user"}], previous_response_id="resp_abc123",  # ID предыдущего ответа store=True  # Сохранять ответ для использования в будущих запросах )
+```python
+response = await client.responses.create(
+    model="gpt-4o",
+    input=[{"type": "message", "content": "Привет, как дела?", "role": "user"}],
+    previous_response_id="resp_abc123",  # ID предыдущего ответа
+    store=True  # Сохранять ответ для использования в будущих запросах
+)
+```
 Получение текста ответа
+```python
 text = response.output[0].content[0].text
+```
 Сохранение ID ответа для следующего запроса
+```python
 response_id = response.id
+```
 
 ### Преимущества использования Responses API:
 
-- Экономия токенов - не нужно отправлять всю историю диалога
+- Экономия токенов — не нужно отправлять всю историю диалога
 - Проще управлять долгими диалогами
 - Автоматическое управление контекстом на стороне OpenAI
 - Возможность продолжить диалог в любой момент

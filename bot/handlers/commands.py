@@ -3,6 +3,9 @@ from __future__ import annotations
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
+from aiogram.types import ReplyKeyboardRemove
 import asyncio
 
 from bot.config import settings
@@ -12,6 +15,11 @@ from bot.utils.db import get_conn, get_user_display_name
 from bot.utils.progress import show_progress_indicator
 
 router = Router()
+
+
+class ImgGenStates(StatesGroup):
+    waiting_for_prompt = State()
+    waiting_for_format = State()
 
 
 # ——— /start —————————————————————————————————————————————— #
@@ -267,38 +275,53 @@ async def cmd_stat(msg: Message):
 
 
 # ——— /img —————————————————————————————————————————————— #
-@router.message(F.text.startswith("/img"))
-async def cmd_img(msg: Message):
-    """Генерирует изображение через DALL·E 3."""
+@router.message(F.text == "/img")
+async def cmd_img(msg: Message, state: FSMContext):
+    """Запрашиваем у пользователя описание для генерации картинки."""
+    await msg.answer(
+        "Опишите, что нарисовать (например: 'Кот в космосе', 'Горы на закате', ...)",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await state.set_state(ImgGenStates.waiting_for_prompt)
+
+
+@router.message(ImgGenStates.waiting_for_prompt)
+async def imggen_get_prompt(msg: Message, state: FSMContext):
+    """Получаем промпт, спрашиваем формат."""
+    await state.update_data(prompt=msg.text)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Вертикальный (1024x1792)", callback_data="img_fmt_vert")],
+            [InlineKeyboardButton(text="Горизонтальный (1792x1024)", callback_data="img_fmt_horiz")],
+        ]
+    )
+    await msg.answer("Выберите формат изображения:", reply_markup=kb)
+    await state.set_state(ImgGenStates.waiting_for_format)
+
+
+@router.callback_query(ImgGenStates.waiting_for_format)
+async def imggen_get_format(callback: CallbackQuery, state: FSMContext):
+    """Получаем формат, генерируем картинку."""
+    data = await state.get_data()
+    prompt = data.get("prompt") or "Смешной кот"
+    if callback.data == "img_fmt_vert":
+        size = "1024x1792"
+    else:
+        size = "1792x1024"
+    # Сразу отвечаем на callback, чтобы Telegram не выдал ошибку
+    await callback.answer()
     progress_task = None
     try:
-        prompt_part, _, size_part = msg.text.partition("|")
-        # Для совместимости с Python <3.9
-        if prompt_part.startswith("/img"):
-            prompt = prompt_part[4:].strip()
-        else:
-            prompt = prompt_part.strip()
-        prompt = prompt or "Смешной кот"
-        size = size_part.strip() or "1024x1024"
-
-        # Валидируем размер (DALL·E 3 поддерживает три значения)
-        if size not in {"256x256", "512x512", "1024x1024"}:
-            size = "1024x1024"
-
-        # Запускаем индикатор прогресса вместо статического сообщения
         progress_task = asyncio.create_task(
-            show_progress_indicator(msg.bot, msg.chat.id, max_time=60)
+            show_progress_indicator(callback.bot, callback.message.chat.id, max_time=60)
         )
-
-        url = await OpenAIClient.dalle(prompt, size, msg.chat.id, msg.from_user.id)
+        url = await OpenAIClient.dalle(prompt, size, callback.message.chat.id, callback.from_user.id)
         if not url:
             raise ValueError("Не удалось получить изображение.")
-            
-        await msg.answer_photo(url, caption=f"🖼 {prompt}")
-        
+        await callback.message.answer_photo(url, caption=f"🖼 {prompt}")
     except Exception as e:
-        await msg.answer(f"❌ Ошибка генерации изображения: {e}")
+        await callback.message.answer(f"❌ Ошибка генерации изображения: {e}")
     finally:
-        # Гарантированно отменяем задачу индикации
         if progress_task and not progress_task.done():
             progress_task.cancel()
+    await state.clear()
