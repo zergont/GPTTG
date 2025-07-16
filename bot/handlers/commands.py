@@ -3,11 +3,13 @@ from __future__ import annotations
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+import asyncio
 
 from bot.config import settings
 from bot.keyboards import main_kb
 from bot.utils.openai_client import OpenAIClient
 from bot.utils.db import get_conn, get_user_display_name
+from bot.utils.progress import show_progress_indicator
 
 router = Router()
 
@@ -265,26 +267,35 @@ async def cmd_stat(msg: Message):
 @router.message(F.text.startswith("/img"))
 async def cmd_img(msg: Message):
     """Генерирует изображение через DALL·E 3."""
-    prompt_part, _, size_part = msg.text.partition("|")
-    # Для совместимости с Python <3.9
-    if prompt_part.startswith("/img"):
-        prompt = prompt_part[4:].strip()
-    else:
-        prompt = prompt_part.strip()
-    prompt = prompt or "Смешной кот"
-    size = size_part.strip() or "1024x1024"
-
-    # Валидируем размер (DALL·E 3 поддерживает три значения)
-    if size not in {"256x256", "512x512", "1024x1024"}:
-        size = "1024x1024"
-
-    status_msg = await msg.answer("🎨 Генерирую изображение...")
-
+    progress_task = None
     try:
+        prompt_part, _, size_part = msg.text.partition("|")
+        # Для совместимости с Python <3.9
+        if prompt_part.startswith("/img"):
+            prompt = prompt_part[4:].strip()
+        else:
+            prompt = prompt_part.strip()
+        prompt = prompt or "Смешной кот"
+        size = size_part.strip() or "1024x1024"
+
+        # Валидируем размер (DALL·E 3 поддерживает три значения)
+        if size not in {"256x256", "512x512", "1024x1024"}:
+            size = "1024x1024"
+
+        # Запускаем индикатор прогресса вместо статического сообщения
+        progress_task = asyncio.create_task(
+            show_progress_indicator(msg.bot, msg.chat.id, max_time=60)
+        )
+
         url = await OpenAIClient.dalle(prompt, size, msg.chat.id, msg.from_user.id)
         if not url:
             raise ValueError("Не удалось получить изображение.")
-        await status_msg.delete()
+            
         await msg.answer_photo(url, caption=f"🖼 {prompt}")
+        
     except Exception as e:
-        await status_msg.edit_text(f"❌ Ошибка генерации изображения: {e}")
+        await msg.answer(f"❌ Ошибка генерации изображения: {e}")
+    finally:
+        # Гарантированно отменяем задачу индикации
+        if progress_task and not progress_task.done():
+            progress_task.cancel()

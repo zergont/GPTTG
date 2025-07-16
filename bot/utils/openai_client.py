@@ -42,8 +42,14 @@ class OpenAIClient:
                 if getattr(settings, "debug_mode", False):
                     logger.info(f"[DEBUG] UPLOAD FILE RESPONSE: {file_response}")
                 return file_response.id
+            except openai.BadRequestError as e:
+                logger.error(f"Ошибка формата при загрузке файла: {e}")
+                raise
+            except openai.AuthenticationError as e:
+                logger.error(f"Ошибка аутентификации: {e}")
+                raise
             except Exception as e:
-                logger.error(f"Ошибка загрузки файла: {e}")
+                logger.error(f"Непредвиденная ошибка загрузки файла: {e}")
                 raise
 
     @classmethod
@@ -185,4 +191,27 @@ class OpenAIClient:
                 except Exception as e:
                     logger.error(f"Ошибка при обработке ответа: {e}")
 
-           
+            logger.warning("Не удалось извлечь текст из ответа OpenAI")
+            return "Извините, не удалось обработать ответ. Попробуйте еще раз."
+
+    @classmethod
+    async def dalle(cls, prompt: str, size: str, chat_id: int, user_id: int) -> str | None:
+        """Генерирует изображение через OpenAI DALL·E и возвращает URL."""
+        async with cls.RATE_LIMIT:
+            try:
+                # Используем официальный AsyncOpenAI для генерации изображения
+                response = await client.images.generate(
+                    model="dall-e-3",
+                    prompt=prompt,
+                    n=1,
+                    size=size,
+                    user=str(user_id)
+                )
+                # DALL·E 3 возвращает список изображений
+                if response and hasattr(response, 'data') and response.data:
+                    return response.data[0].url
+                logger.error(f"DALL·E не вернул изображение: {response}")
+                return None
+            except Exception as e:
+                logger.error(f"Ошибка генерации изображения DALL·E: {e}")
+                return None

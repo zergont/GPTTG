@@ -94,17 +94,29 @@ python -m bot.main
 ## Структура проекта
 GPTTG/
 ├── bot/
-│   ├── handlers/      # обработчики сообщений
-│   ├── utils/         # утилиты: OpenAI, БД, логирование
-│   ├── config.py      # конфигурация и проверка зависимостей
-│   ├── keyboards.py   # ролевые клавиатуры
-│   ├── middlewares.py # БД‑ и error‑middleware
-│   └── main.py        # точка входа приложения
-├── schema.sql         # схема базы SQLite
-├── pyproject.toml     # зависимости Poetry
-├── requirements.txt   # зависимости pip
-├── .env.example       # образец переменных окружения
-└── README.md          # документация проекта
+│   ├── handlers/
+│   │   ├── message_handler.py  # Обработчик с индикацией прогресса
+│   │   ├── commands.py         # Обработчики команд бота
+│   │   ├── document.py         # Обработка PDF документов
+│   │   ├── photo.py            # Обработка изображений
+│   │   ├── text.py             # Обработка текстовых сообщений
+│   │   └── voice.py            # Обработка голосовых сообщений
+│   ├── utils/
+│   │   ├── openai_client.py    # Улучшенный клиент с увеличенным таймаутом
+│   │   ├── progress.py         # Новый модуль для индикации прогресса
+│   │   ├── markdown.py         # Форматирование текста в Markdown
+│   │   ├── log.py              # Настройка логирования
+│   │   └── db.py               # Работа с базой данных SQLite
+│   ├── config.py               # Конфигурация и проверка зависимостей
+│   ├── keyboards.py            # Ролевые клавиатуры (пользователь/админ)
+│   ├── middlewares.py          # БД‑ и error‑middleware
+│   └── main.py                 # Основной файл с подключенными роутерами
+├── schema.sql                  # Схема базы SQLite для учета токенов
+├── pyproject.toml              # Зависимости Poetry
+├── requirements.txt            # Зависимости pip
+├── .env.example                # Образец переменных окружения
+└── README.md                   # Документация проекта
+
 ---
 
 ## Примеры использования
