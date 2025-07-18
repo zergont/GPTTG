@@ -7,6 +7,23 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    import toml
+except ImportError:
+    print("Устанавливается пакет toml для чтения версии...")
+    os.system("pip install toml")
+    import toml
+
+def get_version_from_pyproject():
+    pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+    if pyproject_path.exists():
+        data = toml.load(pyproject_path)
+        return data.get("tool", {}).get("poetry", {}).get("version", "unknown")
+    return "unknown"
+
+VERSION = get_version_from_pyproject()
+print(f"GPTTG Telegram Bot v{VERSION}")
+
 # --- Проверка необходимых пакетов ---
 REQUIRED_PACKAGES = [
     "aiogram",
@@ -14,7 +31,8 @@ REQUIRED_PACKAGES = [
     "openai",
     "backoff",
     "python_dotenv",
-    "aiosqlite",  # добавить эту строку
+    "aiosqlite",
+    "toml",
 ]
 
 def check_packages():
@@ -54,43 +72,64 @@ except ImportError:
     print("⚠️  Модуль python-dotenv не установлен. Переменные окружения из .env не будут загружены.")
     sys.exit(1)
 
-def _env(name: str, default: str | None = None) -> str:
+def _env(name: str, default: str | None = None, env_dict: dict | None = None) -> str:
     """Возвращает значение переменной окружения или бросает ошибку."""
-    val = os.getenv(name, default)
+    if env_dict is not None and name in env_dict:
+        val = env_dict[name]
+    else:
+        val = os.getenv(name, default)
     if val is None:
         print(f"❌ Не удалось считать обязательную переменную {name}")
         raise RuntimeError(f"Не задана обязательная переменная {name}")
-    print(f"✅ Переменная {name} успешно считана")
+    # Не выводим значения ключей
+    if name.lower() in {"bot_token", "openai_api_key"}:
+        print(f"✅ Переменная {name} успешно считана (скрыто)")
+    else:
+        print(f"✅ Переменная {name} = {val}")
     return val
 
-# Проверка переменных окружения с остановкой при ошибке
+# --- Оптимизированная загрузка переменных окружения ---
 REQUIRED_ENV_VARS = [
     "BOT_TOKEN",
     "OPENAI_API_KEY",
     "ADMIN_ID",
 ]
+OPTIONAL_ENV_VARS = [
+    ("SYSTEM_PROMPT", "Ты — полезный ассистент."),
+    ("OPENAI_PRICE_PER_1K_TOKENS", "0.002"),
+    ("WHISPER_PRICE", "0.006"),
+    ("DALLE_PRICE", "0.040"),
+    ("MAX_FILE_MB", "20"),
+    ("DEBUG_MODE", "0"),
+]
 
+env_values = {}
 env_errors = []
 for var in REQUIRED_ENV_VARS:
     try:
-        _env(var)
+        env_values[var] = _env(var)
     except RuntimeError:
         env_errors.append(var)
+for var, default in OPTIONAL_ENV_VARS:
+    try:
+        env_values[var] = _env(var, default)
+    except RuntimeError:
+        env_values[var] = default
 if env_errors:
     print(f"\n❌ Не заданы обязательные переменные окружения: {', '.join(env_errors)}")
     sys.exit(1)
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    bot_token: str = _env("BOT_TOKEN")
-    openai_api_key: str = _env("OPENAI_API_KEY")
-    admin_id: int = int(_env("ADMIN_ID"))
-    system_prompt: str = _env("SYSTEM_PROMPT", "Ты — полезный ассистент.")
-    openai_price_per_1k_tokens: float = float(_env("OPENAI_PRICE_PER_1K_TOKENS", "0.002"))
-    whisper_price: float = float(_env("WHISPER_PRICE", "0.006"))
-    dalle_price: float = float(_env("DALLE_PRICE", "0.040"))
-    max_file_mb: int = int(_env("MAX_FILE_MB", "20"))  # Максимальный размер файла в МБ
-    debug_mode: bool = bool(int(_env("DEBUG_MODE", "0")))  # <-- добавить эту строку
+    bot_token: str = env_values["BOT_TOKEN"]
+    openai_api_key: str = env_values["OPENAI_API_KEY"]
+    admin_id: int = int(env_values["ADMIN_ID"])
+    system_prompt: str = env_values["SYSTEM_PROMPT"]
+    openai_price_per_1k_tokens: float = float(env_values["OPENAI_PRICE_PER_1K_TOKENS"])
+    whisper_price: float = float(env_values["WHISPER_PRICE"])
+    dalle_price: float = float(env_values["DALLE_PRICE"])
+    max_file_mb: int = int(env_values["MAX_FILE_MB"])
+    debug_mode: bool = bool(int(env_values["DEBUG_MODE"]))
 
 # Создаем экземпляр настроек
 settings = Settings()

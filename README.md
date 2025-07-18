@@ -197,3 +197,36 @@ response_id = response.id
 ---
 
 **Репозиторий проекта:** <https://github.com/zergont/GPTTG>
+
+---
+# Systemd unit-файл для контроля работы бота (start/stop/status)
+# ---
+
+## Добавьте этот файл как gpttg-bot.service в /etc/systemd/system/
+
+# [Unit]
+# Description=GPTTG Telegram Bot
+# After=network.target
+#
+# [Service]
+# Type=simple
+# User=botuser  # замените на своего пользователя
+# WorkingDirectory=/path/to/GPTTG
+# ExecStart=/usr/bin/python3 -m bot.main
+# Restart=always
+# RestartSec=5
+# StandardOutput=append:/path/to/GPTTG/logs/bot.log
+# StandardError=append:/path/to/GPTTG/logs/bot.log
+# Environment=PYTHONUNBUFFERED=1
+#
+# [Install]
+# WantedBy=multi-user.target
+
+## Команды для управления:
+# sudo systemctl daemon-reload
+# sudo systemctl enable gpttg-bot
+# sudo systemctl start gpttg-bot
+# sudo systemctl stop gpttg-bot
+# sudo systemctl status gpttg-bot
+#
+# После перезагрузки сервера бот стартует автоматически.

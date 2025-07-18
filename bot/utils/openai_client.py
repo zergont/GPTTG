@@ -175,7 +175,7 @@ class OpenAIClient:
                 await asyncio.sleep(1)
                 raise
             except Exception as e:
-                logger.error(f"OpenAI: неожиданная ошибка: {e}")
+                logger.error(f"OpenAI:unexpected error: {e}")
                 raise
 
             # DEBUG: выводим ответ
@@ -233,3 +233,22 @@ class OpenAIClient:
             except Exception as e:
                 logger.error(f"Ошибка генерации изображения DALL·E: {e}")
                 return None
+
+    @classmethod
+    async def whisper(cls, audio_file: io.BytesIO, chat_id: int, user_id: int) -> str:
+        """Распознаёт речь с помощью OpenAI Whisper и возвращает текст."""
+        async with cls.RATE_LIMIT:
+            try:
+                logger.info(f"Отправка аудио в Whisper для chat_id={chat_id}, user_id={user_id}")
+                audio_file.seek(0)
+                transcript = await client.audio.transcriptions.create(
+                    file=audio_file,
+                    model="whisper-1",
+                    response_format="text",
+                    language="ru"
+                )
+                logger.info(f"Whisper результат: {transcript}")
+                return transcript
+            except Exception as e:
+                logger.error(f"Ошибка Whisper: {e}")
+                raise
