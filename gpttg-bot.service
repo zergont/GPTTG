@@ -4,13 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=botuser  # замените на своего пользователя
-WorkingDirectory=/path/to/GPTTG  # укажите путь к вашему проекту
+User=root
+WorkingDirectory=/root/GPTTG
 ExecStart=/usr/bin/python3 -m bot.main
 Restart=always
 RestartSec=5
-StandardOutput=append:/path/to/GPTTG/logs/bot.log
-StandardError=append:/path/to/GPTTG/logs/bot.log
+StandardOutput=append:/root/GPTTG/logs/bot.log
+StandardError=append:/root/GPTTG/logs/bot.log
 Environment=PYTHONUNBUFFERED=1
 
 [Install]
