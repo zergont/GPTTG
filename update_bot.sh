@@ -1,23 +1,23 @@
 #!/bin/bash
-# Скрипт для обновления кода и перезапуска бота
-# Используйте: sudo ./update_bot.sh
+# РЎРєСЂРёРїС‚ РґР»СЏ РѕР±РЅРѕРІР»РµРЅРёСЏ РєРѕРґР° Рё РїРµСЂРµР·Р°РїСѓСЃРєР° Р±РѕС‚Р°
+# РСЃРїРѕР»СЊР·СѓР№С‚Рµ: sudo ./update_bot.sh
 
 set -e
 
-REPO_DIR="/path/to/GPTTG"  # укажите путь к вашему проекту
+REPO_DIR="/path/to/GPTTG"  # СѓРєР°Р¶РёС‚Рµ РїСѓС‚СЊ Рє РІР°С€РµРјСѓ РїСЂРѕРµРєС‚Сѓ
 SERVICE_NAME="gpttg-bot"
 
 cd "$REPO_DIR"
-echo "Обновление кода из git..."
+echo "РћР±РЅРѕРІР»РµРЅРёРµ РєРѕРґР° РёР· git..."
 git pull
 
 if [ -f "pyproject.toml" ]; then
-    echo "Обновление зависимостей через poetry..."
+    echo "РћР±РЅРѕРІР»РµРЅРёРµ Р·Р°РІРёСЃРёРјРѕСЃС‚РµР№ С‡РµСЂРµР· poetry..."
     poetry install
 fi
 
-echo "Перезапуск сервиса $SERVICE_NAME..."
+echo "РџРµСЂРµР·Р°РїСѓСЃРє СЃРµСЂРІРёСЃР° $SERVICE_NAME..."
 sudo systemctl restart $SERVICE_NAME
 
-echo "Статус сервиса:"
+echo "РЎС‚Р°С‚СѓСЃ СЃРµСЂРІРёСЃР°:"
 systemctl status $SERVICE_NAME --no-pager
