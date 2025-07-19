@@ -116,3 +116,4 @@ async def handle_voice(msg: Message):
         progress_task.cancel()
         logger.error(f"Ошибка при обработке голосового сообщения: {e}")
         await status_msg.edit_text(f"❌ Произошла ошибка: {str(e)[:100]}...")
+logger.info("Bot shutdown complete")

@@ -230,3 +230,40 @@ response_id = response.id
 # sudo systemctl status gpttg-bot
 #
 # После перезагрузки сервера бот стартует автоматически.
+
+---
+
+## Управление ботом на сервере (systemd + update)
+
+### 1. Сервис systemd
+
+Сохраните файл `gpttg-bot.service` в `/etc/systemd/system/` и отредактируйте пути и пользователя.
+
+```sh
+sudo cp gpttg-bot.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable gpttg-bot
+sudo systemctl start gpttg-bot
+```
+
+**Команды управления:**
+- `sudo systemctl start gpttg-bot` — запустить бот
+- `sudo systemctl stop gpttg-bot` — остановить бот
+- `sudo systemctl restart gpttg-bot` — перезапустить бот
+- `sudo systemctl status gpttg-bot` — статус бота
+
+### 2. Автообновление и перезапуск
+
+Добавьте и настройте скрипт `update_bot.sh` в корне проекта:
+
+```sh
+sudo ./update_bot.sh
+```
+
+Скрипт:
+- обновляет код из git
+- обновляет зависимости через poetry
+- перезапускает сервис
+- показывает статус
+
+---

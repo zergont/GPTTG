@@ -33,10 +33,12 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="gitignore .gitignore" />
+    <Content Include="gpttg-bot.service" />
     <Content Include="ini .env.example" />
     <Content Include="LICENSE" />
     <Content Include="requirements.txt" />
     <Content Include="toml pyproject.toml" />
+    <Content Include="update_bot.sh" />
   </ItemGroup>
   <ItemGroup>
     <Interpreter Include="env\">
