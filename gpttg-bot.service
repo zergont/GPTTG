@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/root/GPTTG
-ExecStart=/usr/bin/python3 -m bot.main
+ExecStart=/root/GPTTG/.venv/bin/python3 -m bot.main
 Restart=always
 RestartSec=5
 StandardOutput=append:/root/GPTTG/logs/bot.log
@@ -15,3 +15,4 @@ Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target
+# Save this file as gpttg-bot.service in /etc/systemd/system/
