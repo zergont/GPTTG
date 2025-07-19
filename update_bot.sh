@@ -4,8 +4,14 @@
 
 set -e
 
-REPO_DIR="/path/to/GPTTG"  # укажите путь к вашему проекту
+REPO_DIR="/root/GPTTG"  # путь к вашему проекту
 SERVICE_NAME="gpttg-bot"
+GIT_REPO="https://github.com/zergont/GPTTG.git"
+
+if [ ! -d "$REPO_DIR/.git" ]; then
+    echo "Клонируем репозиторий..."
+    git clone "$GIT_REPO" "$REPO_DIR"
+fi
 
 cd "$REPO_DIR"
 echo "Обновление кода из git..."
@@ -17,7 +23,7 @@ if [ -f "pyproject.toml" ]; then
 fi
 
 echo "Перезапуск сервиса $SERVICE_NAME..."
-sudo systemctl restart $SERVICE_NAME
+systemctl restart $SERVICE_NAME
 
 echo "Статус сервиса:"
 systemctl status $SERVICE_NAME --no-pager
