@@ -27,3 +27,4 @@ systemctl restart $SERVICE_NAME
 
 echo "Статус сервиса:"
 systemctl status $SERVICE_NAME --no-pager
+ 
