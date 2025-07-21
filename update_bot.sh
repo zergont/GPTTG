@@ -24,8 +24,8 @@ if [ -f "$DB_FILE" ]; then
     echo "База bot.sqlite сохранена в bot.sqlite.backup"
 fi
 
-# Принудительное обновление кода из git, не трогаем .env и базу
-find . -maxdepth 1 ! -name "$ENV_FILE" ! -name "$ENV_BACKUP" ! -name "$DB_FILE" ! -name "$DB_BACKUP" ! -name "." -exec rm -rf {} +
+# Принудительное обновление кода из git, не трогаем .env, базу и .git
+find . -maxdepth 1 ! -name "$ENV_FILE" ! -name "$ENV_BACKUP" ! -name "$DB_FILE" ! -name "$DB_BACKUP" ! -name ".git" ! -name "." -exec rm -rf {} +
 git fetch origin
 # Восстанавливаем только отслеживаемые файлы, кроме .env и базы
 git reset --hard origin/beta
