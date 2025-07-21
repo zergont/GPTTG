@@ -27,4 +27,9 @@ systemctl restart $SERVICE_NAME
 
 echo "Статус сервиса:"
 systemctl status $SERVICE_NAME --no-pager
- 
+
+# Выводим версию приложения из pyproject.toml
+if [ -f "pyproject.toml" ]; then
+    VERSION=$(grep '^version' pyproject.toml | head -1 | awk -F '"' '{print $2}')
+    echo "Версия приложения: $VERSION"
+fi
