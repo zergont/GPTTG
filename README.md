@@ -60,20 +60,75 @@ cd GPTTG
 #### Способ A — Poetry (рекомендуется)
 # внутри каталога проекта
 poetry install          # Poetry сам создаст .venv
-poetry shell            # активировать окружение
+# Проверить, что .venv создан:
+ls .venv/bin/python3
+# Запустить бота вручную:
+poetry run python3 -m bot.main
+
 #### Способ B — venv + pip
 python3 -m venv .venv
 source .venv/bin/activate           # Windows: .venv\Scripts\activate
 pip install --upgrade pip
 pip install -r requirements.txt
+# Запустить бота вручную:
+.venv/bin/python3 -m bot.main
+
 ### 3. Настройте переменные окружения
 cp .env.example .env
 nano .env       # или любой редактор
 Заполните обязательные ключи (`BOT_TOKEN`, `OPENAI_API_KEY`, `ADMIN_ID`).
 
-### 4. Запустите бота
-python3 -m bot.main
-> При первом запуске создаётся база `gpttg.db` и таблицы статистики.
+### 4. Запустите бота как сервис (рекомендуется)
+
+Создайте systemd unit-файл `/etc/systemd/system/gpttg-bot.service`:
+
+```
+[Unit]
+Description=GPTTG Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/GPTTG
+ExecStart=/root/GPTTG/.venv/bin/python3 -m bot.main
+Restart=always
+RestartSec=5
+StandardOutput=append:/root/GPTTG/logs/bot.log
+StandardError=append:/root/GPTTG/logs/bot.log
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Запустите команды для управления сервисом:
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable gpttg-bot
+sudo systemctl start gpttg-bot
+sudo systemctl stop gpttg-bot
+sudo systemctl restart gpttg-bot
+sudo systemctl status gpttg-bot
+```
+> После перезагрузки сервера бот стартует автоматически.
+
+---
+
+## Автообновление и перезапуск
+
+Добавьте и настройте скрипт `update_bot.sh` в корне проекта:
+
+```sh
+chmod +x update_bot.sh
+./update_bot.sh
+```
+
+Скрипт:
+- обновляет код из git
+- обновляет зависимости через poetry
+- перезапускает сервис
+- показывает статус
 
 ---
 
@@ -117,6 +172,7 @@ GPTTG/
 ├── pyproject.toml              # Зависимости Poetry
 ├── requirements.txt            # Зависимости pip
 ├── .env.example                # Образец переменных окружения
+├── update_bot.sh               # Скрипт автообновления и рестарта
 └── README.md                   # Документация проекта
 
 ---
@@ -173,12 +229,12 @@ response_id = response.id
 
 ## Рекомендации по работе с файлами
 
-* При загрузке пользовательских файлов используйте `purpose: "user_data"`.  
-* Для изображений используйте `purpose: "vision"`.  
-* Скачивать можно только файлы с `purpose` из списка  
-  `assistants_output`, `batch_output`, `fine-tune-results`.  
-* Для коллекций свыше 10 000 файлов лучше использовать **Vector Store**.
-* Обратите внимание на актуальные ограничения размера файлов в [документации OpenAI](https://platform.openai.com/docs/api-reference/files).
+Бот поддерживает загрузку PDF-документов для анализа через OpenAI Responses API. При отправке PDF-файла в чат:
+- Файл автоматически загружается в OpenAI с параметром `purpose="user_data"`.
+- Вы можете добавить подпись к файлу или отправить отдельное сообщение с вопросом — ИИ обработает файл и выполнит ваш запрос (например, сделать резюме, найти выводы, извлечь таблицы).
+- Поддерживаются только PDF-документы. Для других форматов конвертируйте файл в PDF.
+- Максимальный размер файла ограничен переменной `MAX_FILE_MB` (по умолчанию 20 МБ, максимум 100 МБ).
+- OpenAI API не поддерживает анализ других типов документов (Word, Excel и т.д.).
 
 ---
 
@@ -197,73 +253,3 @@ response_id = response.id
 ---
 
 **Репозиторий проекта:** <https://github.com/zergont/GPTTG>
-
----
-# Systemd unit-файл для контроля работы бота (start/stop/status)
-# ---
-
-## Добавьте этот файл как gpttg-bot.service в /etc/systemd/system/
-
-# [Unit]
-# Description=GPTTG Telegram Bot
-# After=network.target
-#
-# [Service]
-# Type=simple
-# User=botuser  # замените на своего пользователя
-# WorkingDirectory=/path/to/GPTTG
-# ExecStart=/usr/bin/python3 -m bot.main
-# Restart=always
-# RestartSec=5
-# StandardOutput=append:/path/to/GPTTG/logs/bot.log
-# StandardError=append:/path/to/GPTTG/logs/bot.log
-# Environment=PYTHONUNBUFFERED=1
-#
-# [Install]
-# WantedBy=multi-user.target
-
-## Команды для управления:
-# sudo systemctl daemon-reload
-# sudo systemctl enable gpttg-bot
-# sudo systemctl start gpttg-bot
-# sudo systemctl stop gpttg-bot
-# sudo systemctl status gpttg-bot
-#
-# После перезагрузки сервера бот стартует автоматически.
-
----
-
-## Управление ботом на сервере (systemd + update)
-
-### 1. Сервис systemd
-
-Сохраните файл `gpttg-bot.service` в `/etc/systemd/system/` и отредактируйте пути и пользователя.
-
-```sh
-sudo cp gpttg-bot.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable gpttg-bot
-sudo systemctl start gpttg-bot
-```
-
-**Команды управления:**
-- `sudo systemctl start gpttg-bot` — запустить бот
-- `sudo systemctl stop gpttg-bot` — остановить бот
-- `sudo systemctl restart gpttg-bot` — перезапустить бот
-- `sudo systemctl status gpttg-bot` — статус бота
-
-### 2. Автообновление и перезапуск
-
-Добавьте и настройте скрипт `update_bot.sh` в корне проекта:
-
-```sh
-sudo ./update_bot.sh
-```
-
-Скрипт:
-- обновляет код из git
-- обновляет зависимости через poetry
-- перезапускает сервис
-- показывает статус
-
----
