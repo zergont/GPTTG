@@ -2,8 +2,9 @@
 import asyncio
 import os
 import aiohttp
-import aiocron
 import subprocess
+import sys
+
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -15,6 +16,14 @@ from bot import router
 from bot.utils.log import logger
 from bot.utils.http_client import close_session
 from bot.handlers.message_handler import router as message_router
+
+# Проверка и установка aiocron
+try:
+    import aiocron
+except ImportError:
+    print("Устанавливается пакет aiocron...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "aiocron"])
+    import aiocron
 
 async def check_github_version():
     url = "https://raw.githubusercontent.com/zergont/GPTTG/beta/pyproject.toml"
