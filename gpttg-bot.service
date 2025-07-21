@@ -9,8 +9,8 @@ WorkingDirectory=/root/GPTTG
 ExecStart=/root/GPTTG/.venv/bin/python3 -m bot.main
 Restart=always
 RestartSec=5
-StandardOutput=append:/root/GPTTG/logs/bot.log
-StandardError=append:/root/GPTTG/logs/bot.log
+StandardOutput=file:/root/GPTTG/logs/bot.log
+StandardError=file:/root/GPTTG/logs/bot.log
 Environment=PYTHONUNBUFFERED=1
 
 [Install]
