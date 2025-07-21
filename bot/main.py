@@ -1,15 +1,98 @@
 ﻿"""Точка входа приложения."""
 import asyncio
-from aiogram import Bot, Dispatcher
+import os
+import aiohttp
+import aiocron
+import subprocess
+from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-from bot.config import settings
+from bot.config import settings, VERSION
 from bot.middlewares import StartupMiddleware, UserMiddleware, ErrorMiddleware
 from bot import router
 from bot.utils.log import logger
 from bot.utils.http_client import close_session
 from bot.handlers.message_handler import router as message_router
+
+async def check_github_version():
+    url = "https://raw.githubusercontent.com/zergont/GPTTG/beta/pyproject.toml"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            text = await resp.text()
+    for line in text.splitlines():
+        if line.strip().startswith("version"):
+            remote_version = line.split("=")[1].strip().strip('"')
+            break
+    else:
+        remote_version = None
+    return remote_version
+
+async def send_update_prompt(bot, admin_id, current_version, remote_version):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Обновить", callback_data="update_yes"),
+                InlineKeyboardButton(text="Отмена", callback_data="update_no"),
+            ]
+        ]
+    )
+    await bot.send_message(
+        admin_id,
+        f"⚡️ Доступна новая версия: {remote_version}\n"
+        f"Текущая версия: {current_version}\n"
+        "Обновить сейчас?",
+        reply_markup=keyboard
+    )
+
+async def daily_version_check(bot):
+    remote_version = await check_github_version()
+    if remote_version and remote_version != VERSION:
+        await send_update_prompt(bot, settings.admin_id, VERSION, remote_version)
+
+# aiocron: запускать каждый день в 10:00 UTC (13:00 МСК)
+def setup_cron(bot):
+    aiocron.crontab('0 10 * * *', func=lambda: asyncio.create_task(daily_version_check(bot)))
+
+# CallbackQuery handlers
+async def process_update_yes(callback: CallbackQuery):
+    await callback.message.answer("⏳ Обновление запущено…")
+    try:
+        # Принудительный git pull (discard local changes)
+        result = subprocess.run([
+            "/bin/bash", "-c",
+            "git fetch origin && git reset --hard origin/beta && ./update_bot.sh"
+        ], capture_output=True, text=True)
+        if result.returncode == 0:
+            await callback.message.answer(f"✅ Обновление завершено!\n{result.stdout[-1000:]}")
+        else:
+            await callback.message.answer(f"❌ Ошибка обновления:\n{result.stderr[-1000:]}")
+    except Exception as e:
+        await callback.message.answer(f"❌ Ошибка обновления: {e}")
+
+async def process_update_no(callback: CallbackQuery):
+    await callback.message.answer("Обновление отменено.")
+
+# Регистрация callback handlers
+from aiogram import Router
+update_router = Router()
+update_router.callback_query.register(process_update_yes, F.data == "update_yes")
+update_router.callback_query.register(process_update_no, F.data == "update_no")
+
+async def notify_update(bot: Bot):
+    version_file = "last_version.txt"
+    last_version = None
+    if os.path.exists(version_file):
+        with open(version_file, "r", encoding="utf-8") as f:
+            last_version = f.read().strip()
+    if last_version != VERSION:
+        await bot.send_message(
+            settings.admin_id,
+            f"✅ Бот обновлён до версии {VERSION}!"
+        )
+        with open(version_file, "w", encoding="utf-8") as f:
+            f.write(VERSION)
 
 async def main():
     """Основная функция запуска бота."""
@@ -30,9 +113,11 @@ async def main():
     # Регистрируем роутеры
     dp.include_router(router)
     dp.include_router(message_router)
+    dp.include_router(update_router)
     
     logger.info("Starting bot…")
-    
+    await notify_update(bot)  # уведомление об обновлении
+    setup_cron(bot)
     try:
         await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
     finally:
