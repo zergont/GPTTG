@@ -51,6 +51,13 @@ if [ -f "pyproject.toml" ]; then
     fi
 fi
 
+# Копируем актуальный unit-файл systemd
+if [ -f "gpttg-bot.service" ]; then
+    echo "Копирование gpttg-bot.service в /etc/systemd/system/"
+    cp gpttg-bot.service /etc/systemd/system/gpttg-bot.service
+    systemctl daemon-reload
+fi
+
 echo "Перезапуск сервиса $SERVICE_NAME..."
 systemctl restart $SERVICE_NAME
 
