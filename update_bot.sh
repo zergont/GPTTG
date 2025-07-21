@@ -40,6 +40,13 @@ if [ -f "$DB_BACKUP" ]; then
     echo "bot.sqlite восстановлен."
 fi
 
+# Проверяем наличие виртуального окружения и python3
+if [ ! -f ".venv/bin/python3" ]; then
+    echo "Виртуальное окружение не найдено, создаю..."
+    python3 -m venv .venv
+fi
+
+# Проверяем наличие зависимостей
 if [ -f "pyproject.toml" ]; then
     echo "Обновление зависимостей через poetry..."
     export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
@@ -49,6 +56,12 @@ if [ -f "pyproject.toml" ]; then
     else
         poetry install
     fi
+fi
+
+# Проверяем наличие bot/main.py
+if [ ! -f "bot/main.py" ]; then
+    echo "Файл bot/main.py не найден! Обновление прервано."
+    exit 1
 fi
 
 # Копируем актуальный unit-файл systemd
