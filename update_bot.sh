@@ -71,6 +71,10 @@ if [ -f "gpttg-bot.service" ]; then
     systemctl daemon-reload
 fi
 
+# Создаём директорию для логов, если её нет
+mkdir -p /root/GPTTG/logs
+
+# Перезапуск сервиса
 echo "Перезапуск сервиса $SERVICE_NAME..."
 systemctl restart $SERVICE_NAME
 
