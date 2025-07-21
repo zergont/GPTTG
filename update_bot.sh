@@ -42,7 +42,13 @@ fi
 
 if [ -f "pyproject.toml" ]; then
     echo "Обновление зависимостей через poetry..."
-    poetry install
+    export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+    if ! command -v poetry &> /dev/null; then
+        echo "Poetry не найден, использую полный путь..."
+        /root/.local/bin/poetry install
+    else
+        poetry install
+    fi
 fi
 
 echo "Перезапуск сервиса $SERVICE_NAME..."
