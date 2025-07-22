@@ -11,10 +11,12 @@ ENV_FILE=".env"
 ENV_BACKUP=".env.backup"
 DB_FILE="bot.sqlite"
 DB_BACKUP="bot.sqlite.backup"
+LAST_VERSION_FILE="last_version.txt"
+LAST_VERSION_BACKUP="last_version.txt.backup"
 
 cd "$REPO_DIR"
 
-# Сохраняем .env и базу перед обновлением
+# Сохраняем .env, базу и last_version.txt перед обновлением
 if [ -f "$ENV_FILE" ]; then
     cp "$ENV_FILE" "$ENV_BACKUP"
     echo "Файл .env сохранён в .env.backup"
@@ -23,14 +25,18 @@ if [ -f "$DB_FILE" ]; then
     cp "$DB_FILE" "$DB_BACKUP"
     echo "База bot.sqlite сохранена в bot.sqlite.backup"
 fi
+if [ -f "$LAST_VERSION_FILE" ]; then
+    cp "$LAST_VERSION_FILE" "$LAST_VERSION_BACKUP"
+    echo "Файл last_version.txt сохранён в last_version.txt.backup"
+fi
 
 # Принудительное обновление кода из git, не трогаем .env, базу и .git
-find . -maxdepth 1 ! -name "$ENV_FILE" ! -name "$ENV_BACKUP" ! -name "$DB_FILE" ! -name "$DB_BACKUP" ! -name ".git" ! -name "." -exec rm -rf {} +
+find . -maxdepth 1 ! -name "$ENV_FILE" ! -name "$ENV_BACKUP" ! -name "$DB_FILE" ! -name "$DB_BACKUP" ! -name "$LAST_VERSION_FILE" ! -name "$LAST_VERSION_BACKUP" ! -name ".git" ! -name "." -exec rm -rf {} +
 git fetch origin
 # Восстанавливаем только отслеживаемые файлы, кроме .env и базы
 git reset --hard origin/beta
 
-echo "Восстанавливаем .env и базу после обновления..."
+echo "Восстанавливаем .env, базу и last_version.txt после обновления..."
 if [ -f "$ENV_BACKUP" ]; then
     mv "$ENV_BACKUP" "$ENV_FILE"
     echo ".env восстановлен."
@@ -38,6 +44,10 @@ fi
 if [ -f "$DB_BACKUP" ]; then
     mv "$DB_BACKUP" "$DB_FILE"
     echo "bot.sqlite восстановлен."
+fi
+if [ -f "$LAST_VERSION_BACKUP" ]; then
+    mv "$LAST_VERSION_BACKUP" "$LAST_VERSION_FILE"
+    echo "last_version.txt восстановлен."
 fi
 
 # Проверяем наличие виртуального окружения и python3
@@ -52,8 +62,12 @@ if [ -f "pyproject.toml" ]; then
     export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
     if ! command -v poetry &> /dev/null; then
         echo "Poetry не найден, использую полный путь..."
+        # Сначала обновляем lock file, затем устанавливаем зависимости
+        /root/.local/bin/poetry lock --no-update
         /root/.local/bin/poetry install
     else
+        # Сначала обновляем lock file, затем устанавливаем зависимости
+        poetry lock --no-update
         poetry install
     fi
 fi

@@ -58,21 +58,35 @@ def setup_cron(bot):
 async def process_update_yes(callback: CallbackQuery):
     status_msg = await callback.message.answer("⏳ Обновление запущено… Ожидайте примерно 1 минуту.")
     try:
+        # Показываем таймер ожидания (обновляем сообщение каждую 10 сек)
         for i in range(6):
             await asyncio.sleep(10)
             try:
                 await status_msg.edit_text(f"⏳ Обновление идёт… Осталось ~{60 - (i+1)*10} сек.")
             except Exception:
-                break
+                break  # Если сообщение уже не доступно, выходим
+        
+        # Закрываем HTTP сессию перед запуском скрипта обновления
+        await close_session()
+        
         result = subprocess.run([
             "/bin/bash", "-c",
             "git fetch origin && git reset --hard origin/beta && chmod +x ./update_bot.sh && ./update_bot.sh"
         ], capture_output=True, text=True)
+        
         if result.returncode != 0:
-            await callback.message.answer(f"❌ Ошибка обновления:\n{result.stderr[-1000:]}")
-        return
+            try:
+                await callback.message.answer(f"❌ Ошибка обновления:\n{result.stderr[-1000:]}")
+            except Exception:
+                # Игнорируем ошибки отправки, так как бот может уже перезапускаться
+                pass
+        return  # После запуска скрипта не отправлять сообщений!
     except Exception as e:
-        await callback.message.answer(f"❌ Ошибка обновления: {e}")
+        try:
+            await callback.message.answer(f"❌ Ошибка обновления: {e}")
+        except Exception:
+            # Игнорируем ошибки отправки, так как бот может уже перезапускаться
+            pass
 
 async def process_update_no(callback: CallbackQuery):
     await callback.message.answer("Обновление отменено.")
