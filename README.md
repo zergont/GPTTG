@@ -62,7 +62,16 @@ git clone https://github.com/zergont/GPTTG.git
 cd GPTTG
 ```
 
-### Шаг 2. Создайте окружение и установите зависимости
+### Шаг 2. Настройте переменные окружения
+
+```bash
+cp .env.example .env
+nano .env   # или любой редактор
+```
+
+Заполните обязательные поля — `BOT_TOKEN`, `OPENAI_API_KEY`, `ADMIN_ID`.
+
+### Шаг 3. Создайте окружение и установите зависимости
 
 <details>
 <summary><strong>Способ A — Poetry (рекомендуется)</strong></summary>
@@ -83,45 +92,22 @@ source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-python -m bot.main             # запустить бота вручную
+python3 -m bot.main             # запустить бота вручную
 ```
 
 </details>
 
-### Шаг 3. Настройте переменные окружения
-
-```bash
-cp .env.example .env
-nano .env   # или любой редактор
-```
-
-Заполните обязательные поля — `BOT_TOKEN`, `OPENAI_API_KEY`, `ADMIN_ID`.
-
 ### Шаг 4. Запустите бота как systemd‑сервис (Production‑режим)
 
-Создайте файл `/etc/systemd/system/gpttg-bot.service`:
+В корне проекта уже есть готовый файл сервиса `gpttg-bot.service`. Его можно скопировать в нужный каталог:
 
-```ini
-[Unit]
-Description=GPTTG Telegram Bot
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/root/GPTTG
-ExecStart=/root/GPTTG/.venv/bin/python3 -m bot.main
-Restart=always
-RestartSec=5
-StandardOutput=file:/root/GPTTG/logs/bot.log
-StandardError=file:/root/GPTTG/logs/bot.log
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target
+```bash
+sudo cp gpttg-bot.service /etc/systemd/system/gpttg-bot.service
 ```
 
-Дайте права и запустите:
+При необходимости отредактируйте параметры (например, пути, пользователя) под вашу систему.
+
+Затем выполните:
 
 ```bash
 sudo systemctl daemon-reload
@@ -154,6 +140,9 @@ sudo ./update_bot.sh
 - обновляет зависимости (`poetry install`)
 - перезапускает сервис
 - показывает статус
+
+**Автообновление по времени:**
+Бот автоматически проверяет наличие новой версии на GitHub каждый день в 10:00 UTC (13:00 МСК) с помощью планировщика aiocron. Если доступна новая версия, администратору приходит уведомление с предложением обновиться.
 
 ---
 
