@@ -5,7 +5,7 @@ from bot.config import settings
 
 
 def main_kb(is_admin: bool = False) -> ReplyKeyboardMarkup:
-    """Главное меню: команды пользователя + админская /stat."""
+    """Главное меню: команды пользователя + админская статистика."""
     buttons = [
         [KeyboardButton(text="/help"), KeyboardButton(text="/img")],
         [KeyboardButton(text="/stats"), KeyboardButton(text="/reset")],
@@ -21,5 +21,12 @@ IMG_SIZE_KB = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="256×256", callback_data="img_sz_256")],
         [InlineKeyboardButton(text="512×512", callback_data="img_sz_512")],
         [InlineKeyboardButton(text="1024×1024", callback_data="img_sz_1024")],
+    ]
+)
+
+# Inline-клавиатура для админа с кнопкой проверки обновлений
+ADMIN_INLINE_KB = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Проверить обновления", callback_data="admin_check_update")]
     ]
 )

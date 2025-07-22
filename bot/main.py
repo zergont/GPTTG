@@ -71,7 +71,7 @@ async def process_update_yes(callback: CallbackQuery):
         # Принудительный git pull (discard local changes)
         result = subprocess.run([
             "/bin/bash", "-c",
-            "git fetch origin && git reset --hard origin/beta && ./update_bot.sh"
+            "git fetch origin && git reset --hard origin/beta && chmod +x ./update_bot.sh && ./update_bot.sh"
         ], capture_output=True, text=True)
         if result.returncode == 0:
             await callback.message.answer(f"✅ Обновление завершено!\n{result.stdout[-1000:]}")
@@ -211,3 +211,9 @@ async def handle_voice(msg: Message):
         logger.error(f"Ошибка при обработке голосового сообщения: {e}")
         await status_msg.edit_text(f"❌ Произошла ошибка: {str(e)[:100]}...")
 logger.info("Bot shutdown complete")
+# Экспортируем функции для использования в других модулях
+__all__ = [
+    "check_github_version",
+    "send_update_prompt",
+    "VERSION"
+]

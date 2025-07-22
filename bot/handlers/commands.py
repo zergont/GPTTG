@@ -57,7 +57,7 @@ async def cmd_help(msg: Message):
         "/reset — очистить историю контекста",
         "/stats — показать личные расходы",
     ]
-    
+    from bot.keyboards import ADMIN_INLINE_KB
     if msg.from_user.id == settings.admin_id:
         help_lines.extend([
             "",
@@ -66,10 +66,13 @@ async def cmd_help(msg: Message):
             "/models — показать доступные модели",
             "/setmodel — изменить текущую модель"
         ])
-    
-    await msg.answer("\n".join(help_lines), 
-                    parse_mode="Markdown",
-                    reply_markup=main_kb(msg.from_user.id == settings.admin_id))
+        await msg.answer("\n".join(help_lines), 
+                        parse_mode="Markdown",
+                        reply_markup=ADMIN_INLINE_KB)
+    else:
+        await msg.answer("\n".join(help_lines), 
+                        parse_mode="Markdown",
+                        reply_markup=main_kb(False))
 
 
 # ——— /models (админ) —————————————————————————————————————————— #
@@ -325,3 +328,29 @@ async def imggen_get_format(callback: CallbackQuery, state: FSMContext):
         if progress_task and not progress_task.done():
             progress_task.cancel()
     await state.clear()
+
+
+# ——— /checkupdate (админ) ———————————————————————————————— #
+@router.message(F.text == "/checkupdate")
+async def cmd_checkupdate(msg: Message):
+    """Проверка наличия новой версии (только для админа)."""
+    if msg.from_user.id != settings.admin_id:
+        return
+    from bot.main import check_github_version, send_update_prompt, VERSION
+    remote_version = await check_github_version()
+    if remote_version and remote_version != VERSION:
+        await send_update_prompt(msg.bot, msg.from_user.id, VERSION, remote_version)
+    else:
+        await msg.answer(f"✅ Установлена актуальная версия: {VERSION}")
+
+
+# Callback для кнопки "Проверить обновления"
+@router.callback_query(F.data == "admin_check_update")
+async def callback_admin_check_update(callback: CallbackQuery):
+    from bot.main import check_github_version, send_update_prompt, VERSION
+    remote_version = await check_github_version()
+    if remote_version and remote_version != VERSION:
+        await send_update_prompt(callback.bot, callback.from_user.id, VERSION, remote_version)
+    else:
+        await callback.message.answer(f"✅ Установлена актуальная версия: {VERSION}")
+        await callback.answer("Версия актуальна", show_alert=True)
