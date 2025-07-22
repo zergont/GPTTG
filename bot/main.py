@@ -72,10 +72,9 @@ async def process_update_yes(callback: CallbackQuery):
             "/bin/bash", "-c",
             "git fetch origin && git reset --hard origin/beta && chmod +x ./update_bot.sh && ./update_bot.sh"
         ], capture_output=True, text=True)
-        # Если обновление не удалось (скрипт не запущен или ошибка до перезапуска)
         if result.returncode != 0:
             await callback.message.answer(f"❌ Ошибка обновления:\n{result.stderr[-1000:]}")
-        # После запуска update_bot.sh не отправлять сообщения — бот перезапускается
+        return  # После запуска скрипта не отправлять сообщений!
     except Exception as e:
         await callback.message.answer(f"❌ Ошибка обновления: {e}")
 
