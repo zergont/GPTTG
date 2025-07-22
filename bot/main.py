@@ -68,18 +68,14 @@ def setup_cron(bot):
 async def process_update_yes(callback: CallbackQuery):
     await callback.message.answer("⏳ Обновление запущено…")
     try:
-        # Принудительный git pull (discard local changes)
         result = subprocess.run([
             "/bin/bash", "-c",
             "git fetch origin && git reset --hard origin/beta && chmod +x ./update_bot.sh && ./update_bot.sh"
         ], capture_output=True, text=True)
-        if result.returncode == 0:
-            await callback.message.answer(f"✅ Обновление завершено!\n{result.stdout[-1000:]}")
-        else:
+        # Если обновление не удалось (скрипт не запущен или ошибка до перезапуска)
+        if result.returncode != 0:
             await callback.message.answer(f"❌ Ошибка обновления:\n{result.stderr[-1000:]}")
-    except aiohttp.ClientConnectionError:
-        # Соединение закрылось из-за перезапуска — это нормально
-        pass  # Можно логировать или просто игнорировать
+        # После запуска update_bot.sh не отправлять сообщения — бот перезапускается
     except Exception as e:
         await callback.message.answer(f"❌ Ошибка обновления: {e}")
 
