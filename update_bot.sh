@@ -62,12 +62,14 @@ if [ -f "pyproject.toml" ]; then
     export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
     if ! command -v poetry &> /dev/null; then
         echo "Poetry не найден, использую полный путь..."
-        # Сначала обновляем lock file, затем устанавливаем зависимости
-        /root/.local/bin/poetry lock --no-update
+        # Удаляем старый lock file и создаем новый
+        rm -f poetry.lock
+        /root/.local/bin/poetry lock
         /root/.local/bin/poetry install
     else
-        # Сначала обновляем lock file, затем устанавливаем зависимости
-        poetry lock --no-update
+        # Удаляем старый lock file и создаем новый
+        rm -f poetry.lock
+        poetry lock
         poetry install
     fi
 fi
