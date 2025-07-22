@@ -18,6 +18,11 @@ cd "$REPO_DIR"
 
 echo "=== Начало обновления GPTTG ==="
 
+# Создаём директорию для логов сразу
+echo "📁 Создание директории для логов..."
+mkdir -p /root/GPTTG/logs
+echo "✅ Директория logs создана"
+
 # Сохраняем .env, базу и last_version.txt перед обновлением
 if [ -f "$ENV_FILE" ]; then
     cp "$ENV_FILE" "$ENV_BACKUP"
@@ -38,7 +43,7 @@ systemctl stop $SERVICE_NAME || true
 
 # Принудительное обновление кода из git, не трогаем .env, базу и .git
 echo "📥 Обновление кода из Git..."
-find . -maxdepth 1 ! -name "$ENV_FILE" ! -name "$ENV_BACKUP" ! -name "$DB_FILE" ! -name "$DB_BACKUP" ! -name "$LAST_VERSION_FILE" ! -name "$LAST_VERSION_BACKUP" ! -name ".git" ! -name "." -exec rm -rf {} +
+find . -maxdepth 1 ! -name "$ENV_FILE" ! -name "$ENV_BACKUP" ! -name "$DB_FILE" ! -name "$DB_BACKUP" ! -name "$LAST_VERSION_FILE" ! -name "$LAST_VERSION_BACKUP" ! -name ".git" ! -name "." ! -name "logs" -exec rm -rf {} +
 git fetch origin
 # Восстанавливаем только отслеживаемые файлы, кроме .env и базы
 git reset --hard origin/beta
@@ -117,7 +122,7 @@ if [ -f "gpttg-bot.service" ]; then
     echo "✅ Systemd конфигурация обновлена"
 fi
 
-# Создаём директорию для логов, если её нет
+# Убеждаемся, что директория для логов существует
 mkdir -p /root/GPTTG/logs
 
 # Убеждаемся, что сервис включен для автозапуска

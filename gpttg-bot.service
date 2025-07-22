@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/root/GPTTG
+ExecStartPre=/bin/mkdir -p /root/GPTTG/logs
 ExecStart=/root/GPTTG/.venv/bin/python3 -m bot.main
 Restart=always
 RestartSec=5
