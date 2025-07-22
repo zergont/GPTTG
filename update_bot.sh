@@ -88,6 +88,27 @@ if [ ! -f "bot/main.py" ]; then
     exit 1
 fi
 
+# Тестируем, что бот может запуститься
+echo "🧪 Проверка работоспособности бота..."
+timeout 10s .venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '.')
+try:
+    from bot.config import settings, VERSION
+    print(f'✅ Конфигурация загружена, версия: {VERSION}')
+    print(f'✅ Bot token: {\"✓\" if settings.bot_token else \"✗\"}')
+    print(f'✅ OpenAI API key: {\"✓\" if settings.openai_api_key else \"✗\"}')
+    print(f'✅ Admin ID: {settings.admin_id}')
+except Exception as e:
+    print(f'❌ Ошибка загрузки конфигурации: {e}')
+    sys.exit(1)
+" || {
+    echo "❌ Ошибка при тестировании бота!"
+    echo "🔍 Проверяем логи зависимостей:"
+    .venv/bin/python3 -c "import bot.config" 2>&1 || true
+    exit 1
+}
+
 # Копируем актуальный unit-файл systemd
 if [ -f "gpttg-bot.service" ]; then
     echo "⚙️ Копирование gpttg-bot.service в /etc/systemd/system/"
@@ -110,20 +131,32 @@ fi
 echo "🚀 Запуск сервиса $SERVICE_NAME..."
 systemctl start $SERVICE_NAME
 
-# Ждем немного для запуска
-sleep 3
+# Ждем дольше для запуска (особенно важно для загрузки зависимостей)
+echo "⏱️ Ожидание запуска сервиса (15 секунд)..."
+sleep 15
 
-# Проверяем статус
-echo "📊 Статус сервиса:"
-if systemctl is-active --quiet $SERVICE_NAME; then
-    echo "✅ Сервис $SERVICE_NAME успешно запущен"
-    systemctl status $SERVICE_NAME --no-pager --lines=5
-else
-    echo "❌ Ошибка запуска сервиса $SERVICE_NAME"
-    echo "🔍 Последние логи:"
-    journalctl -u $SERVICE_NAME --no-pager --lines=10
-    exit 1
-fi
+# Проверяем статус несколько раз
+for i in {1..3}; do
+    echo "📊 Проверка статуса сервиса (попытка $i/3):"
+    if systemctl is-active --quiet $SERVICE_NAME; then
+        echo "✅ Сервис $SERVICE_NAME успешно запущен"
+        systemctl status $SERVICE_NAME --no-pager --lines=5
+        break
+    else
+        echo "⚠️ Сервис не активен, ожидаю еще 10 секунд..."
+        sleep 10
+        if [ $i -eq 3 ]; then
+            echo "❌ Сервис $SERVICE_NAME не запустился после 3 попыток"
+            echo "🔍 Последние логи:"
+            journalctl -u $SERVICE_NAME --no-pager --lines=20
+            echo ""
+            echo "🔍 Попытка ручного запуска для диагностики:"
+            cd "$REPO_DIR"
+            timeout 10s .venv/bin/python3 -m bot.main || true
+            exit 1
+        fi
+    fi
+done
 
 # Выводим версию приложения из pyproject.toml
 if [ -f "pyproject.toml" ]; then
