@@ -7,6 +7,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
 import asyncio
+import os
+from pathlib import Path
 
 from bot.config import settings
 from bot.keyboards import main_kb
@@ -64,7 +66,8 @@ async def cmd_help(msg: Message):
             "*Админские команды:*",
             "/stat — общая статистика",
             "/models — показать доступные модели",
-            "/setmodel — изменить текущую модель"
+            "/setmodel — изменить текущую модель",
+            "/status — статус системы"
         ])
         await msg.answer("\n".join(help_lines), 
                         parse_mode="Markdown",
@@ -73,6 +76,65 @@ async def cmd_help(msg: Message):
         await msg.answer("\n".join(help_lines), 
                         parse_mode="Markdown",
                         reply_markup=main_kb(False))
+
+
+# ——— /status (админ) —————————————————————————————————————————— #
+@router.message(F.text == "/status")
+async def cmd_status(msg: Message):
+    """Показывает статус системы (только для админа)."""
+    if msg.from_user.id != settings.admin_id:
+        return
+
+    from bot.config import VERSION
+    
+    # Проверяем файл блокировки
+    lock_file = Path("gpttg-bot.lock")
+    lock_status = "🔒 Активна" if lock_file.exists() else "🔓 Отсутствует"
+    
+    if lock_file.exists():
+        try:
+            with open(lock_file, 'r') as f:
+                lock_pid = f.read().strip()
+            lock_info = f"(PID: {lock_pid})"
+        except Exception:
+            lock_info = "(данные недоступны)"
+    else:
+        lock_info = ""
+    
+    # Проверяем количество процессов бота
+    try:
+        import subprocess
+        result = subprocess.run(['pgrep', '-f', 'bot.main'], capture_output=True, text=True)
+        processes = result.stdout.strip().split('\n') if result.stdout.strip() else []
+        process_count = len([p for p in processes if p])
+    except Exception:
+        process_count = "неизвестно"
+    
+    # Проверяем последние файлы версий
+    version_files = []
+    for file_name in ["last_version.txt", "bot.sqlite", ".env"]:
+        file_path = Path(file_name)
+        if file_path.exists():
+            try:
+                size = file_path.stat().st_size
+                version_files.append(f"✅ {file_name} ({size} байт)")
+            except Exception:
+                version_files.append(f"⚠️ {file_name} (ошибка чтения)")
+        else:
+            version_files.append(f"❌ {file_name} (отсутствует)")
+    
+    status_text = (
+        f"🔧 *Статус системы:*\n\n"
+        f"📋 *Версия бота:* `{VERSION}`\n"
+        f"🔒 *Блокировка экземпляра:* {lock_status} {lock_info}\n"
+        f"⚙️ *Процессов bot.main:* {process_count}\n"
+        f"💾 *Системные файлы:*\n"
+    )
+    
+    for file_info in version_files:
+        status_text += f"  {file_info}\n"
+    
+    await msg.answer(status_text, parse_mode="Markdown")
 
 
 # ——— /models (админ) —————————————————————————————————————————— #

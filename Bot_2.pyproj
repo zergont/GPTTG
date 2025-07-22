@@ -30,6 +30,7 @@
     <Compile Include="bot\utils\http_client.py" />
     <Compile Include="bot\utils\markdown.py" />
     <Compile Include="bot\utils\progress.py" />
+    <Compile Include="bot\utils\single_instance.py" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="gitignore .gitignore" />

@@ -16,6 +16,7 @@ from bot.middlewares import StartupMiddleware, UserMiddleware, ErrorMiddleware
 from bot import router
 from bot.utils.log import logger
 from bot.utils.http_client import close_session
+from bot.utils.single_instance import ensure_single_instance
 
 async def check_github_version():
     url = "https://raw.githubusercontent.com/zergont/GPTTG/beta/pyproject.toml"
@@ -145,8 +146,15 @@ async def main():
         await close_session()
         await bot.session.close()
 
+def run_bot():
+    """Запуск бота с проверкой единственного экземпляра."""
+    # Проверяем, что запущен только один экземпляр
+    with ensure_single_instance("gpttg-bot.lock"):
+        logger.info("🔒 Проверка единственного экземпляра пройдена")
+        asyncio.run(main())
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_bot()
 
 # Экспортируем функции для использования в других модулях
 __all__ = [
