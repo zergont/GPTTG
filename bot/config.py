@@ -5,14 +5,24 @@
 from dataclasses import dataclass
 import os
 import sys
+import platform
 from pathlib import Path
+
+# Определяем платформу
+PLATFORM = platform.system().lower()
+IS_WINDOWS = PLATFORM == 'windows'
+IS_LINUX = PLATFORM == 'linux'
+IS_DEVELOPMENT = os.path.exists('.git') and not os.path.exists('/etc/systemd')
 
 # Функции для чтения версии
 try:
     import toml
 except ImportError:
     print("Устанавливается пакет toml для чтения версии...")
-    os.system("pip install toml")
+    if IS_WINDOWS:
+        os.system("pip install toml")
+    else:
+        os.system("python3 -m pip install toml")
     import toml
 
 def get_version_from_pyproject():
@@ -37,12 +47,18 @@ class Settings:
     dalle_price: float
     max_file_mb: int
     debug_mode: bool
+    # Платформо-зависимые настройки
+    platform: str
+    is_windows: bool
+    is_linux: bool
+    is_development: bool
 
 # Функция для создания настроек
 def create_settings():
     """Создает объект настроек после проверки всех зависимостей."""
     
-    print(f"GPTTG Telegram Bot v{VERSION}")
+    platform_info = f" ({PLATFORM}{'|dev' if IS_DEVELOPMENT else '|prod'})"
+    print(f"GPTTG Telegram Bot v{VERSION}{platform_info}")
 
     # --- Проверка необходимых пакетов ---
     REQUIRED_PACKAGES = [
@@ -75,14 +91,20 @@ def create_settings():
     if package_errors:
         print(f"\n❌ Не установлены обязательные пакеты: {', '.join(package_errors)}")
         print("💡 Попробуйте выполнить одну из команд:")
-        print("   poetry install")
-        print("   pip install " + " ".join(package_errors))
+        if IS_WINDOWS:
+            print("   poetry install")
+            print("   pip install " + " ".join(package_errors))
+        else:
+            print("   poetry install")
+            print("   python3 -m pip install " + " ".join(package_errors))
         sys.exit(1)
 
     # Проверяем наличие .env
     env_path = Path('.') / '.env'
     if not env_path.exists():
         print("⚠️  Файл .env не найден в корне проекта!")
+        if IS_DEVELOPMENT:
+            print("💡 Создайте .env файл на основе .env.example")
     else:
         print("✅ Файл .env найден.")
 
@@ -123,7 +145,7 @@ def create_settings():
         ("WHISPER_PRICE", "0.006"),
         ("DALLE_PRICE", "0.040"),
         ("MAX_FILE_MB", "20"),
-        ("DEBUG_MODE", "0"),
+        ("DEBUG_MODE", "1" if IS_DEVELOPMENT else "0"),  # Автоматически включаем debug в dev
     ]
 
     env_values = {}
@@ -152,7 +174,12 @@ def create_settings():
         whisper_price=float(env_values["WHISPER_PRICE"]),
         dalle_price=float(env_values["DALLE_PRICE"]),
         max_file_mb=int(env_values["MAX_FILE_MB"]),
-        debug_mode=bool(int(env_values["DEBUG_MODE"]))
+        debug_mode=bool(int(env_values["DEBUG_MODE"])),
+        # Платформо-зависимые настройки
+        platform=PLATFORM,
+        is_windows=IS_WINDOWS,
+        is_linux=IS_LINUX,
+        is_development=IS_DEVELOPMENT
     )
 
 # Создаем настройки только при импорте модуля

@@ -1,7 +1,6 @@
 ﻿"""Утилита для обеспечения запуска единственного экземпляра бота."""
 import os
 import sys
-import fcntl
 import atexit
 from pathlib import Path
 from typing import Optional
@@ -59,7 +58,9 @@ class SingleInstance:
                 
         except Exception as e:
             print(f"❌ Ошибка создания блокировки: {e}")
-            sys.exit(1)
+            # НЕ завершаем программу при ошибке блокировки
+            print(f"⚠️ Продолжаю работу без блокировки...")
+            return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Выход из контекстного менеджера - удаление блокировки."""
@@ -72,8 +73,19 @@ class SingleInstance:
                 pid = int(f.read().strip())
             
             # Проверяем существование процесса
-            os.kill(pid, 0)  # Сигнал 0 - проверка существования
-            return True
+            # На Unix/Linux используем os.kill(pid, 0)
+            if os.name == 'posix':
+                os.kill(pid, 0)  # Сигнал 0 - проверка существования
+                return True
+            else:
+                # На Windows используем альтернативный метод
+                try:
+                    import subprocess
+                    result = subprocess.run(['tasklist', '/FI', f'PID eq {pid}'], 
+                                          capture_output=True, text=True)
+                    return str(pid) in result.stdout
+                except Exception:
+                    return False
             
         except (ValueError, FileNotFoundError, ProcessLookupError, PermissionError):
             return False

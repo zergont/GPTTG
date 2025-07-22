@@ -33,6 +33,8 @@
     <Compile Include="bot\utils\single_instance.py" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="dev-setup.ps1" />
+    <Content Include="dev-setup.sh" />
     <Content Include="gitignore .gitignore" />
     <Content Include="gpttg-bot.service" />
     <Content Include="ini .env.example" />
