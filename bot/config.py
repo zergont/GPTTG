@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import os
 import sys
 import platform
+import subprocess
 from pathlib import Path
 
 # Определяем платформу
@@ -53,12 +54,81 @@ class Settings:
     is_linux: bool
     is_development: bool
 
+def check_system_packages():
+    """Проверяет и устанавливает необходимые системные пакеты (только для Linux)."""
+    if IS_WINDOWS or IS_DEVELOPMENT:
+        return  # Пропускаем на Windows и в режиме разработки
+    
+    print("🔧 Проверка системных зависимостей...")
+    
+    # Проверяем необходимые утилиты
+    required_tools = {
+        'pgrep': 'procps',
+        'ps': 'procps', 
+        'git': 'git'
+    }
+    
+    missing_packages = set()
+    
+    for tool, package in required_tools.items():
+        try:
+            result = subprocess.run(['which', tool], 
+                                  capture_output=True, text=True, timeout=3)
+            if result.returncode == 0:
+                print(f"✅ {tool} найден")
+            else:
+                print(f"⚠️ {tool} не найден, добавляем {package} в список установки")
+                missing_packages.add(package)
+        except Exception:
+            print(f"⚠️ Не удалось проверить {tool}, добавляем {package} в список установки")
+            missing_packages.add(package)
+    
+    # Устанавливаем недостающие пакеты
+    if missing_packages:
+        missing_list = list(missing_packages)
+        print(f"📦 Устанавливаем недостающие пакеты: {', '.join(missing_list)}")
+        
+        try:
+            # Проверяем права суперпользователя
+            if os.geteuid() != 0:
+                print("⚠️ Для установки системных пакетов требуются права суперпользователя")
+                print("💡 Запустите бота от имени root или установите пакеты вручную:")
+                print(f"   sudo apt-get update && sudo apt-get install -y {' '.join(missing_list)}")
+                return
+            
+            # Обновляем список пакетов
+            update_result = subprocess.run(['apt-get', 'update', '-qq'], 
+                                         capture_output=True, text=True, timeout=30)
+            if update_result.returncode != 0:
+                print(f"⚠️ Ошибка обновления списка пакетов: {update_result.stderr}")
+                return
+            
+            # Устанавливаем пакеты
+            install_result = subprocess.run(['apt-get', 'install', '-y'] + missing_list,
+                                          capture_output=True, text=True, timeout=60)
+            if install_result.returncode == 0:
+                print("✅ Системные пакеты успешно установлены")
+            else:
+                print(f"⚠️ Ошибка установки пакетов: {install_result.stderr}")
+                
+        except subprocess.TimeoutExpired:
+            print("⚠️ Таймаут при установке пакетов")
+        except Exception as e:
+            print(f"⚠️ Ошибка при установке системных пакетов: {e}")
+            print("💡 Установите пакеты вручную:")
+            print(f"   sudo apt-get update && sudo apt-get install -y {' '.join(missing_list)}")
+    else:
+        print("✅ Все системные зависимости присутствуют")
+
 # Функция для создания настроек
 def create_settings():
     """Создает объект настроек после проверки всех зависимостей."""
     
     platform_info = f" ({PLATFORM}{'|dev' if IS_DEVELOPMENT else '|prod'})"
     print(f"GPTTG Telegram Bot v{VERSION}{platform_info}")
+
+    # --- Проверка системных пакетов (только для Linux продакшен) ---
+    check_system_packages()
 
     # --- Проверка необходимых пакетов ---
     REQUIRED_PACKAGES = [

@@ -95,7 +95,7 @@ fi
 
 # Тестируем, что бот может запуститься
 echo "🧪 Проверка работоспособности бота..."
-timeout 10s .venv/bin/python3 -c "
+timeout 15s .venv/bin/python3 -c "
 import sys
 sys.path.insert(0, '.')
 try:
@@ -104,6 +104,7 @@ try:
     print(f'✅ Bot token: {\"✓\" if settings.bot_token else \"✗\"}')
     print(f'✅ OpenAI API key: {\"✓\" if settings.openai_api_key else \"✗\"}')
     print(f'✅ Admin ID: {settings.admin_id}')
+    print(f'✅ Платформа: {settings.platform} ({\"dev\" if settings.is_development else \"prod\"})')
 except Exception as e:
     print(f'❌ Ошибка загрузки конфигурации: {e}')
     sys.exit(1)

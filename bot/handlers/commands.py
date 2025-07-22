@@ -101,14 +101,38 @@ async def cmd_status(msg: Message):
     else:
         lock_info = ""
     
-    # Проверяем количество процессов бота
+    # Проверяем количество процессов бота (с fallback методами)
+    process_count = "неизвестно"
     try:
         import subprocess
-        result = subprocess.run(['pgrep', '-f', 'bot.main'], capture_output=True, text=True)
-        processes = result.stdout.strip().split('\n') if result.stdout.strip() else []
-        process_count = len([p for p in processes if p])
-    except Exception:
-        process_count = "неизвестно"
+        if settings.is_windows:
+            # Windows: используем tasklist
+            result = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq python*'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                processes = [line for line in result.stdout.split('\n') if 'python' in line.lower()]
+                process_count = len(processes)
+        else:
+            # Linux: пробуем разные методы
+            methods = [
+                # Метод 1: pgrep (если установлен)
+                (['pgrep', '-f', 'bot.main'], lambda out: len([p for p in out.strip().split('\n') if p])),
+                # Метод 2: ps + grep
+                (['ps', 'aux'], lambda out: len([line for line in out.split('\n') if 'bot.main' in line])),
+                # Метод 3: pidof python3 + проверка
+                (['pidof', 'python3'], lambda out: len(out.strip().split()) if out.strip() else 0)
+            ]
+            
+            for cmd, parser in methods:
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        process_count = parser(result.stdout)
+                        break
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    continue
+    except Exception as e:
+        process_count = f"ошибка: {str(e)[:30]}..."
     
     # Проверяем последние файлы версий
     version_files = []
@@ -123,16 +147,42 @@ async def cmd_status(msg: Message):
         else:
             version_files.append(f"❌ {file_name} (отсутствует)")
     
+    # Проверяем системные утилиты (диагностика)
+    system_tools = []
+    try:
+        import subprocess
+        tools_to_check = ['pgrep', 'ps', 'pidof'] if not settings.is_windows else ['tasklist']
+        for tool in tools_to_check:
+            try:
+                result = subprocess.run(['which', tool] if not settings.is_windows else ['where', tool], 
+                                      capture_output=True, text=True, timeout=3)
+                if result.returncode == 0:
+                    system_tools.append(f"✅ {tool}")
+                else:
+                    system_tools.append(f"❌ {tool}")
+            except Exception:
+                system_tools.append(f"❌ {tool}")
+    except Exception:
+        system_tools = ["❌ Ошибка проверки утилит"]
+    
+    # Информация о платформе
+    platform_info = f"{settings.platform} ({'dev' if settings.is_development else 'prod'})"
+    
     status_text = (
         f"🔧 *Статус системы:*\n\n"
         f"📋 *Версия бота:* `{VERSION}`\n"
+        f"🖥️ *Платформа:* {platform_info}\n"
         f"🔒 *Блокировка экземпляра:* {lock_status} {lock_info}\n"
-        f"⚙️ *Процессов bot.main:* {process_count}\n"
+        f"⚙️ *Процессов bot.main:* {process_count}\n\n"
         f"💾 *Системные файлы:*\n"
     )
     
     for file_info in version_files:
         status_text += f"  {file_info}\n"
+    
+    status_text += f"\n🛠️ *Системные утилиты:*\n"
+    for tool_info in system_tools[:5]:  # Показываем только первые 5
+        status_text += f"  {tool_info}\n"
     
     await msg.answer(status_text, parse_mode="Markdown")
 
