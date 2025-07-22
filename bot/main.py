@@ -77,6 +77,9 @@ async def process_update_yes(callback: CallbackQuery):
             await callback.message.answer(f"✅ Обновление завершено!\n{result.stdout[-1000:]}")
         else:
             await callback.message.answer(f"❌ Ошибка обновления:\n{result.stderr[-1000:]}")
+    except aiohttp.ClientConnectionError:
+        # Соединение закрылось из-за перезапуска — это нормально
+        pass  # Можно логировать или просто игнорировать
     except Exception as e:
         await callback.message.answer(f"❌ Ошибка обновления: {e}")
 
