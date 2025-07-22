@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "gpttg"
-version = "1.2.9"
+version = "1.3.0"
 description = "Telegram-бот на OpenAI Responses API с мультимодальностью, учётом расходов и пошаговой генерацией изображений"
 authors = ["zergont <Folist@gmail.com>"]
 license = "MIT"
@@ -17,6 +17,7 @@ openai = "^1.93.2"
 python-dotenv = "^1.1.1"
 backoff = "^2.2.1"
 toml = "^0.10.2"
+aiocron = "^1.8"
 
 [build-system]
 requires = ["poetry-core"]
