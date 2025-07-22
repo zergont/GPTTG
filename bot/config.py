@@ -33,6 +33,7 @@ REQUIRED_PACKAGES = [
     "python_dotenv",
     "aiosqlite",
     "toml",
+    "aiocron",  # Добавлен aiocron для планировщика автообновлений
 ]
 
 def check_packages():
@@ -53,6 +54,9 @@ def check_packages():
 package_errors = check_packages()
 if package_errors:
     print(f"\n❌ Не установлены обязательные пакеты: {', '.join(package_errors)}")
+    print("💡 Попробуйте выполнить одну из команд:")
+    print("   poetry install")
+    print("   pip install " + " ".join(package_errors))
     sys.exit(1)
 # --- Конец проверки пакетов ---
 
@@ -130,6 +134,3 @@ class Settings:
     dalle_price: float = float(env_values["DALLE_PRICE"])
     max_file_mb: int = int(env_values["MAX_FILE_MB"])
     debug_mode: bool = bool(int(env_values["DEBUG_MODE"]))
-
-# Создаем экземпляр настроек
-settings = Settings()

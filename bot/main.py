@@ -53,7 +53,11 @@ async def daily_version_check(bot):
         await send_update_prompt(bot, settings.admin_id, VERSION, remote_version)
 
 def setup_cron(bot):
-    aiocron.crontab('0 10 * * *', func=lambda: asyncio.create_task(daily_version_check(bot)))
+    try:
+        aiocron.crontab('0 10 * * *', func=lambda: asyncio.create_task(daily_version_check(bot)))
+        logger.info("✅ Планировщик автообновления настроен (10:00 UTC)")
+    except Exception as e:
+        logger.error(f"❌ Ошибка настройки планировщика: {e}")
 
 async def process_update_yes(callback: CallbackQuery):
     status_msg = await callback.message.answer("⏳ Обновление запущено… Ожидайте примерно 1 минуту.")
