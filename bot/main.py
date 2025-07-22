@@ -4,6 +4,7 @@ import os
 import aiohttp
 import subprocess
 import sys
+import time
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
@@ -66,8 +67,16 @@ def setup_cron(bot):
 
 # CallbackQuery handlers
 async def process_update_yes(callback: CallbackQuery):
-    await callback.message.answer("⏳ Обновление запущено…")
+    # Отправляем сообщение с таймером ожидания
+    status_msg = await callback.message.answer("⏳ Обновление запущено… Ожидайте примерно 1 минуту.")
     try:
+        # Показываем таймер ожидания (обновляем сообщение каждую 10 сек)
+        for i in range(6):
+            await asyncio.sleep(10)
+            try:
+                await status_msg.edit_text(f"⏳ Обновление идёт… Осталось ~{60 - (i+1)*10} сек.")
+            except Exception:
+                break  # Если сообщение уже не доступно, выходим
         result = subprocess.run([
             "/bin/bash", "-c",
             "git fetch origin && git reset --hard origin/beta && chmod +x ./update_bot.sh && ./update_bot.sh"
