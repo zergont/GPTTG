@@ -566,4 +566,4 @@ async def callback_admin_check_update(callback: CallbackQuery):
         await send_update_prompt(callback.bot, callback.from_user.id, VERSION, remote_version)
     else:
         await callback.message.answer(f"✅ Установлена актуальная версия: {VERSION}")
-        await callback.answer("Версия актуальна", show_alert=True)
+    await callback.answer()  # Убрали show_alert=True и текст всплывающего сообщения
