@@ -54,5 +54,14 @@ class ErrorMiddleware(BaseMiddleware):
             return await handler(event, data)
         except Exception as e:  # noqa: BLE001
             logger.exception("Необработанная ошибка: %s", e)
+            
+            # Пытаемся отправить сообщение об ошибке пользователю
             if hasattr(event, "answer"):
-                await event.answer("⚠️ На сервере произошла ошибка. Сообщите администратору.")
+                try:
+                    await event.answer("⚠️ На сервере произошла ошибка. Сообщите администратору.")
+                except Exception as reply_error:
+                    logger.error(f"Не удалось отправить сообщение об ошибке: {reply_error}")
+            
+            # НЕ прерываем работу бота - просто логируем ошибку и продолжаем
+            # return None позволяет боту продолжить работу
+            return None

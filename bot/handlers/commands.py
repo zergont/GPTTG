@@ -44,13 +44,15 @@ async def cmd_start(msg: Message):
 @router.message(F.text == "/help")
 async def cmd_help(msg: Message):
     """Выводит краткую справку."""
+    from bot.utils.markdown import send_long_message_v2
+    
     help_lines = [
         "🤖 *Доступные команды:*",
         "",
         "💬 Просто пишите мне — я отвечу",
         "🖼 Отправьте фото с подписью — проанализирую",
         "🎤 Отправьте голосовое — распознаю и отвечу",
-        "📄 Отправьте документ — прочитаю и проанализирую",  # Новая строка
+        "📄 Отправьте документ — прочитаю и проанализирую",
         "",
         "*Команды:*",
         "/start — приветствие и информация о боте",
@@ -59,6 +61,7 @@ async def cmd_help(msg: Message):
         "/reset — очистить историю контекста",
         "/stats — показать личные расходы",
     ]
+    
     from bot.keyboards import ADMIN_INLINE_KB
     if msg.from_user.id == settings.admin_id:
         help_lines.extend([
@@ -69,13 +72,17 @@ async def cmd_help(msg: Message):
             "/setmodel — изменить текущую модель",
             "/status — статус системы"
         ])
-        await msg.answer("\n".join(help_lines), 
-                        parse_mode="Markdown",
-                        reply_markup=ADMIN_INLINE_KB)
+        keyboard = ADMIN_INLINE_KB
     else:
-        await msg.answer("\n".join(help_lines), 
-                        parse_mode="Markdown",
-                        reply_markup=main_kb(False))
+        keyboard = main_kb(False)
+    
+    # Применяем старый подход БЕЗ предварительного экранирования
+    help_text = "\n".join(help_lines)
+    chunks = send_long_message_v2(help_text)  # Экранирование происходит внутри функции
+    for i, chunk in enumerate(chunks):
+        # Добавляем клавиатуру только к последнему сообщению
+        current_keyboard = keyboard if i == len(chunks) - 1 else None
+        await msg.answer(chunk, parse_mode="MarkdownV2", reply_markup=current_keyboard)
 
 
 # ——— /status (админ) —————————————————————————————————————————— #
@@ -96,10 +103,9 @@ async def cmd_status(msg: Message):
             with open(lock_file, 'r') as f:
                 lock_pid = f.read().strip()
             lock_info = f"(PID: {lock_pid})"
+            lock_status += f" {lock_info}"
         except Exception:
-            lock_info = "(данные недоступны)"
-    else:
-        lock_info = ""
+            lock_status += " (данные недоступны)"
     
     # Проверяем количество процессов бота (с fallback методами)
     process_count = "неизвестно"
@@ -168,23 +174,51 @@ async def cmd_status(msg: Message):
     # Информация о платформе
     platform_info = f"{settings.platform} ({'dev' if settings.is_development else 'prod'})"
     
+    # Форматируем статус БЕЗ MarkdownV2 - используем обычный текст
     status_text = (
-        f"🔧 *Статус системы:*\n\n"
-        f"📋 *Версия бота:* `{VERSION}`\n"
-        f"🖥️ *Платформа:* {platform_info}\n"
-        f"🔒 *Блокировка экземпляра:* {lock_status} {lock_info}\n"
-        f"⚙️ *Процессов bot.main:* {process_count}\n\n"
-        f"💾 *Системные файлы:*\n"
+        f"🔧 Статус системы:\n\n"
+        f"📋 Версия бота: {VERSION}\n"
+        f"🖥️ Платформа: {platform_info}\n"
+        f"🔒 Блокировка экземпляра: {lock_status}\n"
+        f"⚙️ Процессов bot.main: {str(process_count)}\n\n"
+        f"💾 Системные файлы:\n"
     )
     
     for file_info in version_files:
         status_text += f"  {file_info}\n"
     
-    status_text += f"\n🛠️ *Системные утилиты:*\n"
-    for tool_info in system_tools[:5]:  # Показываем только первые 5
-        status_text += f"  {tool_info}\n"
+    if system_tools:
+        status_text += f"\n🛠️ Системные утилиты:\n"
+        for tool_info in system_tools[:5]:
+            status_text += f"  {tool_info}\n"
     
-    await msg.answer(status_text, parse_mode="Markdown")
+    # Отправляем без MarkdownV2 - только обычный текст
+    if len(status_text) <= 4096:
+        await msg.answer(status_text)
+    else:
+        # Разбиваем на части вручную без экранирования
+        chunks = []
+        current_pos = 0
+        max_length = 4096
+        
+        while current_pos < len(status_text):
+            end_pos = current_pos + max_length
+            if end_pos >= len(status_text):
+                chunks.append(status_text[current_pos:])
+                break
+            
+            # Ищем удобное место для разрыва
+            safe_break = status_text.rfind('\n', current_pos, end_pos)
+            if safe_break == -1 or safe_break == current_pos:
+                safe_break = status_text.rfind(' ', current_pos, end_pos)
+            if safe_break == -1 or safe_break == current_pos:
+                safe_break = end_pos
+            
+            chunks.append(status_text[current_pos:safe_break])
+            current_pos = safe_break + (1 if status_text[safe_break:safe_break+1] in ['\n', ' '] else 0)
+        
+        for chunk in chunks:
+            await msg.answer(chunk)
 
 
 # ——— /models (админ) —————————————————————————————————————————— #
@@ -195,6 +229,8 @@ async def cmd_models(msg: Message):
         return
 
     try:
+        from bot.utils.markdown import send_long_message_v2
+        
         current_model = await OpenAIClient.get_current_model()
         models = await OpenAIClient.get_available_models()
         
@@ -203,11 +239,15 @@ async def cmd_models(msg: Message):
         
         for model in models[:10]:  # Показываем первые 10 моделей
             status = "✅" if model['id'] == current_model else "⚪"
+            # НЕ экранируем здесь - будет экранировано позже
             models_text += f"{status} `{model['id']}`\n"
         
         models_text += f"\nИспользуйте /setmodel для смены модели"
         
-        await msg.answer(models_text, parse_mode="Markdown")
+        # Применяем старый красивый подход с ОДНИМ экранированием
+        chunks = send_long_message_v2(models_text)
+        for chunk in chunks:
+            await msg.answer(chunk, parse_mode="MarkdownV2")
         
     except Exception as e:
         await msg.answer(f"❌ Ошибка получения списка моделей: {e}")
@@ -293,6 +333,7 @@ async def cmd_reset(msg: Message):
 @router.message(F.text.startswith("/stats"))
 async def cmd_stats(msg: Message):
     """Показывает расходы конкретного пользователя."""
+    
     async with get_conn() as db:
         # Общие расходы
         cur = await db.execute(
@@ -309,18 +350,44 @@ async def cmd_stats(msg: Message):
         )
         models = await cur.fetchall()
     
-    stats_text = f"📊 *Ваша статистика:*\n\n💰 Общие расходы: *${total:.4f}*\n\n"
+    # Форматируем БЕЗ MarkdownV2 - используем обычный текст
+    stats_text = f"📊 Ваша статистика:\n\nОбщие расходы: ${total:.4f}\n\n"
     
     if models:
-        stats_text += "*По моделям:*\n"
+        stats_text += "По моделям:\n"
         for model, requests, cost in models:
-            # Экранируем специальные символы для Markdown
-            safe_model = model.replace("-", "\\-").replace(".", "\\.")
-            stats_text += f"• {safe_model}: {requests} запросов — ${cost:.4f}\n"
+            # НЕ экранируем здесь - используем обычный текст
+            stats_text += f"• {model}: {requests} запросов — ${cost:.4f}\n"
     else:
-        stats_text += "Пока нет данных об использовании\\."
+        stats_text += "Пока нет данных об использовании."
     
-    await msg.answer(stats_text, parse_mode="Markdown")
+    # Отправляем без MarkdownV2 - только обычный текст
+    if len(stats_text) <= 4096:
+        await msg.answer(stats_text)
+    else:
+        # Разбиваем на части вручную без экранирования
+        chunks = []
+        current_pos = 0
+        max_length = 4096
+        
+        while current_pos < len(stats_text):
+            end_pos = current_pos + max_length
+            if end_pos >= len(stats_text):
+                chunks.append(stats_text[current_pos:])
+                break
+            
+            # Ищем удобное место для разрыва
+            safe_break = stats_text.rfind('\n', current_pos, end_pos)
+            if safe_break == -1 or safe_break == current_pos:
+                safe_break = stats_text.rfind(' ', current_pos, end_pos)
+            if safe_break == -1 or safe_break == current_pos:
+                safe_break = end_pos
+            
+            chunks.append(stats_text[current_pos:safe_break])
+            current_pos = safe_break + (1 if stats_text[safe_break:safe_break+1] in ['\n', ' '] else 0)
+        
+        for chunk in chunks:
+            await msg.answer(chunk)
 
 
 # ——— /stat (админ) —————————————————————————————————————————— #
@@ -354,39 +421,48 @@ async def cmd_stat(msg: Message):
     leaderboard_lines = []
     for user_id, cost in rows:
         display_name = await get_user_display_name(user_id)
-        # Экранируем специальные символы Markdown в именах пользователей
-        safe_name = (display_name
-                    .replace("_", "\\_")
-                    .replace("*", "\\*")
-                    .replace("[", "\\[")
-                    .replace("]", "\\]")
-                    .replace("(", "\\(")
-                    .replace(")", "\\)")
-                    .replace("~", "\\~")
-                    .replace("`", "\\`")
-                    .replace(">", "\\>")
-                    .replace("#", "\\#")
-                    .replace("+", "\\+")
-                    .replace("-", "\\-")
-                    .replace("=", "\\=")
-                    .replace("|", "\\|")
-                    .replace("{", "\\{")
-                    .replace("}", "\\}")
-                    .replace(".", "\\.")
-                    .replace("!", "\\!"))
-        leaderboard_lines.append(f"• {safe_name} — ${cost:.4f}")
+        # НЕ экранируем здесь - используем обычный текст
+        leaderboard_lines.append(f"• {display_name} — ${cost:.4f}")
     
     leaderboard = "\n".join(leaderboard_lines) or "—"
 
+    # Форматируем БЕЗ MarkdownV2 - используем обычный текст
     stat_text = (
-        f"📈 *Общая статистика:*\n\n"
-        f"🤖 *Текущая модель:* `{current_model}`\n\n"
-        f"📅 За сутки: *${day_total:.4f}*\n"
-        f"📅 За неделю: *${week_total:.4f}*\n"
-        f"📅 За месяц: *${month_total:.4f}*\n\n"
-        f"🏆 *Топ\\-10 пользователей:*\n{leaderboard}"
+        f"📈 Общая статистика:\n\n"
+        f"🤖 Текущая модель: {current_model}\n\n"
+        f"📅 За сутки: ${day_total:.4f}\n"
+        f"📅 За неделю: ${week_total:.4f}\n"
+        f"📅 За месяц: ${month_total:.4f}\n\n"
+        f"🏆 Топ-10 пользователей:\n{leaderboard}"
     )
-    await msg.answer(stat_text, parse_mode="Markdown")
+    
+    # Отправляем без MarkdownV2 - только обычный текст
+    if len(stat_text) <= 4096:
+        await msg.answer(stat_text)
+    else:
+        # Разбиваем на части вручную без экранирования
+        chunks = []
+        current_pos = 0
+        max_length = 4096
+        
+        while current_pos < len(stat_text):
+            end_pos = current_pos + max_length
+            if end_pos >= len(stat_text):
+                chunks.append(stat_text[current_pos:])
+                break
+            
+            # Ищем удобное место для разрыва
+            safe_break = stat_text.rfind('\n', current_pos, end_pos)
+            if safe_break == -1 or safe_break == current_pos:
+                safe_break = stat_text.rfind(' ', current_pos, end_pos)
+            if safe_break == -1 or safe_break == current_pos:
+                safe_break = end_pos
+            
+            chunks.append(stat_text[current_pos:safe_break])
+            current_pos = safe_break + (1 if stat_text[safe_break:safe_break+1] in ['\n', ' '] else 0)
+        
+        for chunk in chunks:
+            await msg.answer(chunk)
 
 
 # ——— /img —————————————————————————————————————————————— #

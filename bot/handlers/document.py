@@ -6,7 +6,6 @@ from bot.config import settings
 from bot.utils.openai_client import OpenAIClient
 from bot.utils.http_client import download_file
 from bot.utils.log import logger
-from bot.utils.markdown import escape_markdown_v2
 from bot.utils.progress import show_progress_indicator
 import openai
 import aiohttp
@@ -56,7 +55,7 @@ async def handle_document(msg: Message):
 
         # Индикатор загрузки файла
         upload_task = asyncio.create_task(
-            show_progress_indicator(msg.bot, msg.chat.id, max_time=120)
+            show_progress_indicator(msg.bot, msg.chat.id, max_time=120, message="📥 Загружаю документ")
         )
         try:
             # Загружаем файл из Telegram
@@ -74,7 +73,7 @@ async def handle_document(msg: Message):
 
         # Индикатор анализа документа
         analyze_task = asyncio.create_task(
-            show_progress_indicator(msg.bot, msg.chat.id, max_time=180)
+            show_progress_indicator(msg.bot, msg.chat.id, max_time=180, message="🔍 Анализирую документ")
         )
 
         # Формируем запрос с файлом и текстом
@@ -99,14 +98,36 @@ async def handle_document(msg: Message):
         if analyze_task and not analyze_task.done():
             analyze_task.cancel()
 
-        # Отправляем результат
-        result_text = f"📄 **Анализ файла {doc.file_name}:**\n\n{response_text}"
-
-        # Экранируем текст для MarkdownV2
-        safe_text = escape_markdown_v2(result_text)
-        MAX_LEN = 4096
-        for i in range(0, len(safe_text), MAX_LEN):
-            await msg.answer(safe_text[i:i+MAX_LEN], parse_mode="MarkdownV2")
+        # Отправляем результат БЕЗ MarkdownV2 - используем обычный текст
+        result_text = f"📄 Анализ файла {doc.file_name}:\n\n{response_text}"
+        
+        # Разбиваем на части если нужно
+        if len(result_text) <= 4096:
+            await msg.answer(result_text)
+        else:
+            # Разбиваем на части вручную без экранирования
+            chunks = []
+            current_pos = 0
+            max_length = 4096
+            
+            while current_pos < len(result_text):
+                end_pos = current_pos + max_length
+                if end_pos >= len(result_text):
+                    chunks.append(result_text[current_pos:])
+                    break
+                
+                # Ищем удобное место для разрыва
+                safe_break = result_text.rfind('\n', current_pos, end_pos)
+                if safe_break == -1 or safe_break == current_pos:
+                    safe_break = result_text.rfind(' ', current_pos, end_pos)
+                if safe_break == -1 or safe_break == current_pos:
+                    safe_break = end_pos
+                
+                chunks.append(result_text[current_pos:safe_break])
+                current_pos = safe_break + (1 if result_text[safe_break:safe_break+1] in ['\n', ' '] else 0)
+            
+            for chunk in chunks:
+                await msg.answer(chunk)
 
     except Exception as e:
         if upload_task and not upload_task.done():

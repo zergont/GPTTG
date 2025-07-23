@@ -3,7 +3,7 @@
 import asyncio
 from bot.utils.log import logger
 
-async def show_progress_indicator(bot, chat_id, max_time=120, interval=2):
+async def show_progress_indicator(bot, chat_id, max_time=120, interval=2, message="Обрабатываю ваш запрос"):
     """
     Показывает индикатор загрузки для aiogram 3.x
     
@@ -12,6 +12,7 @@ async def show_progress_indicator(bot, chat_id, max_time=120, interval=2):
         chat_id: ID чата для отправки сообщения
         max_time: Максимальное время ожидания в секундах
         interval: Интервал обновления индикатора в секундах
+        message: Текст сообщения для отображения
     """
     indicators = ["⏳", "🔄", "⌛", "🤔", "💭", "🧠"]
     waiting_msg = None
@@ -20,7 +21,7 @@ async def show_progress_indicator(bot, chat_id, max_time=120, interval=2):
         # Сначала отправляем сообщение о начале обработки
         waiting_msg = await bot.send_message(
             chat_id=chat_id, 
-            text="Обрабатываю ваш запрос... ⏳"
+            text=f"{message}... ⏳"
         )
         
         # Затем периодически обновляем его, чтобы показать прогресс
@@ -32,18 +33,28 @@ async def show_progress_indicator(bot, chat_id, max_time=120, interval=2):
             
             # Обновляем сообщение разными индикаторами
             await bot.edit_message_text(
-                text=f"Обрабатываю ваш запрос... {current_indicator}\n"
+                text=f"{message}... {current_indicator}\n"
                      f"Прошло {seconds} сек. Пожалуйста, подождите.",
                 chat_id=chat_id,
                 message_id=waiting_msg.message_id
             )
     except asyncio.CancelledError:
         # Задача была отменена, значит ответ готов
+        # Удаляем сообщение о прогрессе, но игнорируем любые ошибки
+        if waiting_msg:
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
+            except asyncio.CancelledError:
+                # Если удаление тоже было отменено, просто игнорируем
+                pass
+            except Exception:
+                # Игнорируем любые другие ошибки (сообщение уже удалено, права доступа и т.д.)
+                pass
+    except Exception as e:
+        logger.error(f"Ошибка в индикаторе прогресса: {e}")
+        # Если произошла ошибка, также пытаемся удалить сообщение
         if waiting_msg:
             try:
                 await bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
             except Exception:
-                # Игнорируем ошибку, если сообщение уже удалено
                 pass
-    except Exception as e:
-        logger.error(f"Ошибка в индикаторе прогресса: {e}")
