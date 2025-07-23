@@ -83,20 +83,33 @@ async def process_update_yes(callback: CallbackQuery):
             "git fetch origin",
             "git reset --hard origin/beta",
             "chmod +x ./update_bot.sh",
-            "./update_bot.sh"
+            "nohup ./update_bot.sh > /tmp/gpttg_update.log 2>&1 &",  # Запуск в фоне
+            "sleep 2",  # Даем время на запуск
+            "echo 'Обновление запущено в фоновом режиме'"
         ]
         
         result = subprocess.run([
             "/bin/bash", "-c", " && ".join(commands)
-        ], capture_output=True, text=True, timeout=120)
+        ], capture_output=True, text=True, timeout=30)  # Уменьшили timeout
         
-        if result.returncode != 0:
-            # Отправляем подробную диагностику
-            error_info = f"❌ Ошибка обновления (код: {result.returncode})\n\n"
+        # Отправляем результат запуска (не ожидаем завершения обновления)
+        if result.returncode == 0:
+            success_msg = (
+                "✅ Автообновление запущено!\n\n"
+                "🔄 Бот будет перезапущен автоматически через ~10 секунд.\n"
+                "📋 Проверьте статус командой /status через минуту."
+            )
+            try:
+                await callback.message.answer(success_msg)
+            except Exception:
+                pass
+        else:
+            # Отправляем подробную диагностику только при ошибке запуска
+            error_info = f"❌ Ошибка запуска обновления (код: {result.returncode})\n\n"
             if result.stdout:
                 error_info += f"📤 STDOUT:\n{result.stdout[-800:]}\n\n"
             if result.stderr:
-                error_info += f"❌ STDERR:\n{result.stderr[-800:]}\n\n"  # Исправлена опечатка
+                error_info += f"❌ STDERR:\n{result.stderr[-800:]}\n\n"
             
             try:
                 await callback.message.answer(error_info[:4000])  # Telegram лимит
@@ -109,12 +122,12 @@ async def process_update_yes(callback: CallbackQuery):
         return  # После запуска скрипта не отправлять сообщений!
     except subprocess.TimeoutExpired:
         try:
-            await callback.message.answer("⏰ Обновление превысило лимит времени (2 мин). Проверьте статус вручную.")
+            await callback.message.answer("⏰ Запуск обновления превысил лимит времени (30 сек). Попробуйте /checkupdate.")
         except Exception:
             pass
     except Exception as e:
         try:
-            await callback.message.answer(f"❌ Ошибка обновления: {e}")
+            await callback.message.answer(f"❌ Ошибка запуска обновления: {e}")
         except Exception:
             # Игнорируем ошибки отправки, так как бот может уже перезапускаться
             pass

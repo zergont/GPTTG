@@ -9,7 +9,7 @@ SERVICE_NAME="gpttg-bot"
 GIT_REPO="https://github.com/zergont/GPTTG.git"
 ENV_FILE=".env"
 ENV_BACKUP=".env.backup"
-DB_FILE="bot.sqlite"
+DB_FILE="bot/bot.sqlite"  # ИСПРАВЛЕНО: база находится в папке bot/
 DB_BACKUP="bot.sqlite.backup"
 LAST_VERSION_FILE="last_version.txt"
 LAST_VERSION_BACKUP="last_version.txt.backup"
@@ -43,7 +43,7 @@ systemctl stop $SERVICE_NAME || true
 
 # Принудительное обновление кода из git, не трогаем .env, базу и .git
 echo "📥 Обновление кода из Git..."
-find . -maxdepth 1 ! -name "$ENV_FILE" ! -name "$ENV_BACKUP" ! -name "$DB_FILE" ! -name "$DB_BACKUP" ! -name "$LAST_VERSION_FILE" ! -name "$LAST_VERSION_BACKUP" ! -name ".git" ! -name "." ! -name "logs" -exec rm -rf {} +
+find . -maxdepth 1 ! -name "$ENV_FILE" ! -name "$ENV_BACKUP" ! -name "$DB_BACKUP" ! -name "$LAST_VERSION_BACKUP" ! -name ".git" ! -name "." ! -name "logs" ! -name "bot" -exec rm -rf {} +
 git fetch origin
 # Восстанавливаем только отслеживаемые файлы, кроме .env и базы
 git reset --hard origin/beta
@@ -133,36 +133,32 @@ if ! systemctl is-enabled $SERVICE_NAME &> /dev/null; then
     echo "✅ Автозапуск сервиса включен"
 fi
 
-# Запуск сервиса
-echo "🚀 Запуск сервиса $SERVICE_NAME..."
-systemctl start $SERVICE_NAME
-
-# Ждем дольше для запуска (особенно важно для загрузки зависимостей)
-echo "⏱️ Ожидание запуска сервиса (15 секунд)..."
-sleep 15
-
-# Проверяем статус несколько раз
-for i in {1..3}; do
-    echo "📊 Проверка статуса сервиса (попытка $i/3):"
-    if systemctl is-active --quiet $SERVICE_NAME; then
-        echo "✅ Сервис $SERVICE_NAME успешно запущен"
-        systemctl status $SERVICE_NAME --no-pager --lines=5
-        break
-    else
-        echo "⚠️ Сервис не активен, ожидаю еще 10 секунд..."
-        sleep 10
-        if [ $i -eq 3 ]; then
-            echo "❌ Сервис $SERVICE_NAME не запустился после 3 попыток"
-            echo "🔍 Последние логи:"
-            journalctl -u $SERVICE_NAME --no-pager --lines=20
-            echo ""
-            echo "🔍 Попытка ручного запуска для диагностики:"
-            cd "$REPO_DIR"
-            timeout 10s .venv/bin/python3 -m bot.main || true
-            exit 1
-        fi
+# Создаем отложенный скрипт перезапуска для надежности
+echo "🚀 Создание отложенного скрипта перезапуска..."
+cat > /tmp/restart_bot.sh << 'EOF'
+#!/bin/bash
+sleep 3
+systemctl start gpttg-bot
+sleep 5
+for i in {1..6}; do
+    if systemctl is-active --quiet gpttg-bot; then
+        echo "✅ Сервис gpttg-bot успешно запущен"
+        systemctl status gpttg-bot --no-pager --lines=3
+        exit 0
     fi
+    echo "⏳ Попытка $i/6: ожидание запуска сервиса..."
+    sleep 5
 done
+echo "❌ Не удалось запустить сервис после 6 попыток"
+journalctl -u gpttg-bot --no-pager --lines=10
+exit 1
+EOF
+
+chmod +x /tmp/restart_bot.sh
+
+# Запуск отложенного скрипта в фоне
+echo "🚀 Запуск отложенного перезапуска сервиса..."
+nohup /tmp/restart_bot.sh > /tmp/restart_bot.log 2>&1 &
 
 # Выводим версию приложения из pyproject.toml
 if [ -f "pyproject.toml" ]; then
@@ -171,3 +167,5 @@ if [ -f "pyproject.toml" ]; then
 fi
 
 echo "=== Обновление GPTTG завершено успешно ==="
+echo "🔄 Сервис будет перезапущен в фоновом режиме через 3 секунды"
+echo "📋 Логи перезапуска: tail -f /tmp/restart_bot.log"
