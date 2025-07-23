@@ -96,7 +96,7 @@ async def process_update_yes(callback: CallbackQuery):
             if result.stdout:
                 error_info += f"📤 STDOUT:\n{result.stdout[-800:]}\n\n"
             if result.stderr:
-                error_info += f"❌ STDERR:\n{result.stderr[-800:path]}\n\n"
+                error_info += f"❌ STDERR:\n{result.stderr[-800:]}\n\n"  # Исправлена опечатка
             
             try:
                 await callback.message.answer(error_info[:4000])  # Telegram лимит
