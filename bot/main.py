@@ -73,18 +73,45 @@ async def process_update_yes(callback: CallbackQuery):
         # Закрываем HTTP сессию перед запуском скрипта обновления
         await close_session()
         
+        # Улучшенная диагностика с дополнительными проверками
+        commands = [
+            "cd /root/GPTTG",
+            "pwd",
+            "whoami", 
+            "ls -la update_bot.sh",
+            "git status --porcelain",
+            "git fetch origin",
+            "git reset --hard origin/beta",
+            "chmod +x ./update_bot.sh",
+            "./update_bot.sh"
+        ]
+        
         result = subprocess.run([
-            "/bin/bash", "-c",
-            "git fetch origin && git reset --hard origin/beta && chmod +x ./update_bot.sh && ./update_bot.sh"
-        ], capture_output=True, text=True)
+            "/bin/bash", "-c", " && ".join(commands)
+        ], capture_output=True, text=True, timeout=120)
         
         if result.returncode != 0:
+            # Отправляем подробную диагностику
+            error_info = f"❌ Ошибка обновления (код: {result.returncode})\n\n"
+            if result.stdout:
+                error_info += f"📤 STDOUT:\n{result.stdout[-800:]}\n\n"
+            if result.stderr:
+                error_info += f"❌ STDERR:\n{result.stderr[-800:path]}\n\n"
+            
             try:
-                await callback.message.answer(f"❌ Ошибка обновления:\n{result.stderr[-1000:]}")
+                await callback.message.answer(error_info[:4000])  # Telegram лимит
             except Exception:
-                # Игнорируем ошибки отправки, так как бот может уже перезапускаться
-                pass
+                # Если не удается отправить, попробуем короткое сообщение
+                try:
+                    await callback.message.answer(f"❌ Обновление неудачно. Код ошибки: {result.returncode}")
+                except Exception:
+                    pass
         return  # После запуска скрипта не отправлять сообщений!
+    except subprocess.TimeoutExpired:
+        try:
+            await callback.message.answer("⏰ Обновление превысило лимит времени (2 мин). Проверьте статус вручную.")
+        except Exception:
+            pass
     except Exception as e:
         try:
             await callback.message.answer(f"❌ Ошибка обновления: {e}")

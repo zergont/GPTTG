@@ -10,9 +10,10 @@ ExecStartPre=/bin/mkdir -p /root/GPTTG/logs
 ExecStart=/root/GPTTG/.venv/bin/python3 -m bot.main
 Restart=always
 RestartSec=5
-StandardOutput=file:/root/GPTTG/logs/bot.log
-StandardError=file:/root/GPTTG/logs/bot.log
+StandardOutput=journal
+StandardError=journal
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/root/GPTTG
 
 [Install]
 WantedBy=multi-user.target
