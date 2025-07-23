@@ -93,9 +93,15 @@ async def cmd_status(msg: Message):
         return
 
     from bot.config import VERSION
+    import os
     
-    # Проверяем файл блокировки
-    lock_file = Path("gpttg-bot.lock")
+    # Определяем базовую директорию проекта
+    # Получаем путь к директории bot/ и поднимаемся на уровень выше
+    bot_dir = Path(__file__).parent.parent  # из bot/handlers/ в bot/
+    project_root = bot_dir.parent  # из bot/ в корень проекта
+    
+    # Проверяем файл блокировки (относительно корня проекта)
+    lock_file = project_root / "gpttg-bot.lock"
     lock_status = "🔒 Активна" if lock_file.exists() else "🔓 Отсутствует"
     
     if lock_file.exists():
@@ -140,10 +146,13 @@ async def cmd_status(msg: Message):
     except Exception as e:
         process_count = f"ошибка: {str(e)[:30]}..."
     
-    # Проверяем последние файлы версий
+    # Проверяем системные файлы с правильными путями
     version_files = []
-    for file_name in ["last_version.txt", "bot.sqlite", ".env"]:
-        file_path = Path(file_name)
+    
+    # Файлы в корне проекта
+    root_files = ["last_version.txt", ".env"]
+    for file_name in root_files:
+        file_path = project_root / file_name
         if file_path.exists():
             try:
                 size = file_path.stat().st_size
@@ -152,6 +161,22 @@ async def cmd_status(msg: Message):
                 version_files.append(f"⚠️ {file_name} (ошибка чтения)")
         else:
             version_files.append(f"❌ {file_name} (отсутствует)")
+    
+    # База данных в папке bot/
+    db_file = bot_dir / "bot.sqlite"
+    if db_file.exists():
+        try:
+            size = db_file.stat().st_size
+            version_files.append(f"✅ bot.sqlite ({size} байт)")
+        except Exception:
+            version_files.append(f"⚠️ bot.sqlite (ошибка чтения)")
+    else:
+        version_files.append(f"❌ bot.sqlite (отсутствует)")
+    
+    # Добавляем информацию о путях для диагностики
+    version_files.append(f"📁 Рабочая директория: {os.getcwd()}")
+    version_files.append(f"📁 Корень проекта: {project_root}")
+    version_files.append(f"📁 Папка bot: {bot_dir}")
     
     # Проверяем системные утилиты (диагностика)
     system_tools = []
