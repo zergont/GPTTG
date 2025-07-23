@@ -549,8 +549,11 @@ async def cmd_checkupdate(msg: Message):
     """Проверка наличия новой версии (только для админа)."""
     if msg.from_user.id != settings.admin_id:
         return
-    from bot.main import check_github_version, send_update_prompt, VERSION
-    remote_version = await check_github_version()
+    
+    from bot.utils.updater import SimpleUpdater
+    from bot.main import send_update_prompt, VERSION
+    
+    remote_version = await SimpleUpdater.check_remote_version()
     if remote_version and remote_version != VERSION:
         await send_update_prompt(msg.bot, msg.from_user.id, VERSION, remote_version)
     else:
@@ -560,8 +563,10 @@ async def cmd_checkupdate(msg: Message):
 # Callback для кнопки "Проверить обновления"
 @router.callback_query(F.data == "admin_check_update")
 async def callback_admin_check_update(callback: CallbackQuery):
-    from bot.main import check_github_version, send_update_prompt, VERSION
-    remote_version = await check_github_version()
+    from bot.utils.updater import SimpleUpdater
+    from bot.main import send_update_prompt, VERSION
+    
+    remote_version = await SimpleUpdater.check_remote_version()
     if remote_version and remote_version != VERSION:
         await send_update_prompt(callback.bot, callback.from_user.id, VERSION, remote_version)
     else:

@@ -1,301 +1,87 @@
 #!/bin/bash
-# Скрипт для обновления кода и перезапуска бота с сохранением .env и базы bot.sqlite
+# Упрощённый скрипт обновления GPTTG
 # Используйте: sudo ./update_bot.sh
 
-# Убираем set -e, чтобы скрипт не останавливался при мелких ошибках
-# set -e
+set -e
 
-REPO_DIR="/root/GPTTG"  # путь к вашему проекту
+REPO_DIR="/root/GPTTG"
 SERVICE_NAME="gpttg-bot"
-GIT_REPO="https://github.com/zergont/GPTTG.git"
-ENV_FILE=".env"
-ENV_BACKUP=".env.backup"
-DB_FILE="bot/bot.sqlite"  # ИСПРАВЛЕНО: база находится в папке bot/
-DB_BACKUP="bot.sqlite.backup"
-LAST_VERSION_FILE="last_version.txt"
-LAST_VERSION_BACKUP="last_version.txt.backup"
 
 cd "$REPO_DIR"
 
 echo "=== Начало обновления GPTTG ==="
 
-# Проверяем и устанавливаем системные зависимости
-echo "🔧 Проверка системных зависимостей..."
-
-# Проверяем наличие команды at
-if ! command -v at &> /dev/null; then
-    echo "📦 Команда 'at' не найдена, устанавливаю..."
-    if command -v apt &> /dev/null; then
-        # Ubuntu/Debian
-        apt update && apt install -y at
-    elif command -v yum &> /dev/null; then
-        # CentOS/RHEL
-        yum install -y at
-    elif command -v dnf &> /dev/null; then
-        # Fedora
-        dnf install -y at
-    else
-        echo "⚠️ Не удалось определить пакетный менеджер для установки 'at'"
-    fi
-    
-    # Запускаем службу atd
-    if systemctl enable atd 2>/dev/null && systemctl start atd 2>/dev/null; then
-        echo "✅ Служба atd запущена и включена"
-    else
-        echo "⚠️ Не удалось запустить службу atd"
-    fi
-else
-    echo "✅ Команда 'at' найдена"
+# Проверяем права суперпользователя
+if [[ $EUID -ne 0 ]]; then
+   echo "❌ Этот скрипт должен быть запущен от имени root"
+   exit 1
 fi
 
-# Проверяем работоспособность atd
-if systemctl is-active --quiet atd; then
-    echo "✅ Служба atd активна"
-else
-    echo "🔄 Запускаем службу atd..."
-    systemctl start atd || echo "⚠️ Не удалось запустить atd"
-fi
+# Сохраняем важные файлы
+echo "💾 Сохранение конфигурации и данных..."
+cp .env .env.backup 2>/dev/null || echo "⚠️ Файл .env не найден"
+cp bot/bot.sqlite bot.sqlite.backup 2>/dev/null || echo "⚠️ База данных не найдена"
+cp last_version.txt last_version.backup 2>/dev/null || echo "⚠️ Файл версии не найден"
 
-# Создаём директорию для логов сразу
-echo "📁 Создание директории для логов..."
-mkdir -p /root/GPTTG/logs
-echo "✅ Директория logs создана"
-
-# Сохраняем .env, базу и last_version.txt перед обновлением
-if [ -f "$ENV_FILE" ]; then
-    cp "$ENV_FILE" "$ENV_BACKUP"
-    echo "✅ Файл .env сохранён в .env.backup"
-fi
-if [ -f "$DB_FILE" ]; then
-    cp "$DB_FILE" "$DB_BACKUP"
-    echo "✅ База bot.sqlite сохранена в bot.sqlite.backup"
-fi
-if [ -f "$LAST_VERSION_FILE" ]; then
-    cp "$LAST_VERSION_FILE" "$LAST_VERSION_BACKUP"
-    echo "✅ Файл last_version.txt сохранён в last_version.txt.backup"
-fi
-
-# Остановка сервиса перед обновлением
+# Останавливаем сервис
 echo "🛑 Остановка сервиса $SERVICE_NAME..."
-if systemctl stop $SERVICE_NAME; then
-    echo "✅ Сервис остановлен успешно"
-else
-    echo "⚠️ Сервис уже был остановлен или произошла ошибка"
-fi
+systemctl stop $SERVICE_NAME || echo "⚠️ Сервис уже остановлен"
 
-# Принудительное обновление кода из git, не трогаем .env, базу и .git
+# Обновляем код
 echo "📥 Обновление кода из Git..."
-find . -maxdepth 1 ! -name "$ENV_FILE" ! -name "$ENV_BACKUP" ! -name "$DB_BACKUP" ! -name "$LAST_VERSION_BACKUP" ! -name ".git" ! -name "." ! -name "logs" ! -name "bot" -exec rm -rf {} +
-if git fetch origin; then
-    echo "✅ Git fetch выполнен успешно"
+git fetch origin
+git reset --hard origin/beta
+
+# Восстанавливаем сохранённые файлы
+echo "🔄 Восстановление конфигурации..."
+mv .env.backup .env 2>/dev/null || echo "⚠️ Не удалось восстановить .env"
+mv bot.sqlite.backup bot/bot.sqlite 2>/dev/null || echo "⚠️ Не удалось восстановить базу"
+mv last_version.backup last_version.txt 2>/dev/null || echo "⚠️ Не удалось восстановить версию"
+
+# Обновляем зависимости
+echo "📦 Обновление зависимостей..."
+export PATH="$HOME/.local/bin:$PATH"
+if command -v poetry &> /dev/null; then
+    poetry install --only=main
 else
-    echo "❌ Ошибка Git fetch, но продолжаем..."
+    echo "⚠️ Poetry не найден, используем pip"
+    pip install -r requirements.txt
 fi
 
-# Восстанавливаем только отслеживаемые файлы, кроме .env и базы
-if git reset --hard origin/beta; then
-    echo "✅ Git reset выполнен успешно"
-else
-    echo "❌ Ошибка Git reset, но продолжаем..."
-fi
-
-echo "🔄 Восстанавливаем .env, базу и last_version.txt после обновления..."
-if [ -f "$ENV_BACKUP" ]; then
-    mv "$ENV_BACKUP" "$ENV_FILE"
-    echo "✅ .env восстановлен."
-fi
-if [ -f "$DB_BACKUP" ]; then
-    mv "$DB_BACKUP" "$DB_FILE"
-    echo "✅ bot.sqlite восстановлен."
-fi
-if [ -f "$LAST_VERSION_BACKUP" ]; then
-    mv "$LAST_VERSION_BACKUP" "$LAST_VERSION_FILE"
-    echo "✅ last_version.txt восстановлен."
-fi
-
-# Проверяем наличие виртуального окружения и python3
-if [ ! -f ".venv/bin/python3" ]; then
-    echo "🐍 Виртуальное окружение не найдено, создаю..."
-    python3 -m venv .venv || echo "⚠️ Ошибка создания venv, но продолжаем..."
-fi
-
-# Проверяем наличие зависимостей
-if [ -f "pyproject.toml" ]; then
-    echo "📦 Обновление зависимостей через poetry..."
-    export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
-    if ! command -v poetry &> /dev/null; then
-        echo "📎 Poetry не найден, использую полный путь..."
-        # Удаляем старый lock file и создаем новый
-        rm -f poetry.lock
-        if /root/.local/bin/poetry lock; then
-            echo "✅ Poetry lock успешно"
-        else
-            echo "⚠️ Ошибка poetry lock, но продолжаем..."
-        fi
-        if /root/.local/bin/poetry install; then
-            echo "✅ Poetry install успешно"
-        else
-            echo "⚠️ Ошибка poetry install, но продолжаем..."
-        fi
-    else
-        # Удаляем старый lock file и создаем новый
-        rm -f poetry.lock
-        if poetry lock; then
-            echo "✅ Poetry lock успешно"
-        else
-            echo "⚠️ Ошибка poetry lock, но продолжаем..."
-        fi
-        if poetry install; then
-            echo "✅ Poetry install успешно"
-        else
-            echo "⚠️ Ошибка poetry install, но продолжаем..."
-        fi
-    fi
-    echo "✅ Зависимости обновлены"
-fi
-
-# Проверяем наличие bot/main.py
-if [ ! -f "bot/main.py" ]; then
-    echo "❌ Файл bot/main.py не найден! Но продолжаем с перезапуском..."
-else
-    echo "✅ Файл bot/main.py найден"
-fi
-
-# Тестируем, что бот может запуститься (НЕ КРИТИЧНО)
-echo "🧪 Проверка работоспособности бота..."
-if timeout 15s .venv/bin/python3 -c "
-import sys
-sys.path.insert(0, '.')
-try:
-    from bot.config import settings, VERSION
-    print(f'✅ Конфигурация загружена, версия: {VERSION}')
-    print(f'✅ Bot token: {\"✓\" if settings.bot_token else \"✗\"}')
-    print(f'✅ OpenAI API key: {\"✓\" if settings.openai_api_key else \"✗\"}')
-    print(f'✅ Admin ID: {settings.admin_id}')
-    print(f'✅ Платформа: {settings.platform} ({\"dev\" if settings.is_development else \"prod\"})')
-except Exception as e:
-    print(f'❌ Ошибка загрузки конфигурации: {e}')
-    sys.exit(1)
-"; then
-    echo "✅ Тестирование прошло успешно"
-else
-    echo "⚠️ Ошибка при тестировании бота, но продолжаем с перезапуском..."
-fi
-
-# Копируем актуальный unit-файл systemd
+# Обновляем systemd сервис
 if [ -f "gpttg-bot.service" ]; then
-    echo "⚙️ Копирование gpttg-bot.service в /etc/systemd/system/"
-    if cp gpttg-bot.service /etc/systemd/system/gpttg-bot.service; then
-        echo "✅ Systemd файл скопирован"
-    else
-        echo "⚠️ Ошибка копирования systemd файла"
-    fi
-    if systemctl daemon-reload; then
-        echo "✅ Systemd daemon-reload выполнен"
-    else
-        echo "⚠️ Ошибка daemon-reload"
-    fi
-    echo "✅ Systemd конфигурация обновлена"
+    echo "⚙️ Обновление systemd сервиса..."
+    cp gpttg-bot.service /etc/systemd/system/
+    systemctl daemon-reload
 fi
 
-# Убеждаемся, что директория для логов существует
-mkdir -p /root/GPTTG/logs
+# Запускаем сервис
+echo "🚀 Запуск сервиса $SERVICE_NAME..."
+systemctl start $SERVICE_NAME
 
-# Убеждаемся, что сервис включен для автозапуска
-echo "🔧 Проверка автозапуска сервиса..."
-if ! systemctl is-enabled $SERVICE_NAME &> /dev/null; then
-    if systemctl enable $SERVICE_NAME; then
-        echo "✅ Автозапуск сервиса включен"
-    else
-        echo "⚠️ Ошибка включения автозапуска"
-    fi
-fi
-
-# Создаем отложенный скрипт перезапуска для надежности (КРИТИЧНО!)
-echo "🚀 Создание отложенного скрипта перезапуска..."
-
-# Проверяем, доступна ли команда at
-if command -v at &> /dev/null && systemctl is-active --quiet atd; then
-    echo "✅ Используем команду 'at' для отложенного перезапуска"
-    
-    # Создаем финальный скрипт перезапуска
-    cat > /tmp/restart_bot_at.sh << 'EOF'
-#!/bin/bash
-echo "🔄 Отложенный перезапуск через at начат в $(date)"
-sleep 3
-echo "🚀 Запуск сервиса gpttg-bot..."
-systemctl start gpttg-bot
+# Проверяем статус
+echo "⏳ Ожидание запуска..."
 sleep 5
+
 for i in {1..6}; do
-    if systemctl is-active --quiet gpttg-bot; then
-        echo "✅ Сервис gpttg-bot успешно запущен в $(date)"
-        systemctl status gpttg-bot --no-pager --lines=3
+    if systemctl is-active --quiet $SERVICE_NAME; then
+        echo "✅ Сервис успешно запущен!"
+        systemctl status $SERVICE_NAME --no-pager --lines=3
+        
+        # Получаем версию из pyproject.toml
+        if [ -f "pyproject.toml" ]; then
+            VERSION=$(grep '^version' pyproject.toml | head -1 | awk -F '"' '{print $2}')
+            echo "🎉 Обновление завершено! Версия: $VERSION"
+        fi
+        
+        echo "=== Обновление GPTTG завершено успешно ==="
         exit 0
     fi
-    echo "⏳ Попытка $i/6: ожидание запуска сервиса в $(date)..."
+    echo "⏳ Попытка $i/6: ожидание запуска..."
     sleep 5
 done
-echo "❌ Не удалось запустить сервис после 6 попыток в $(date)"
-journalctl -u gpttg-bot --no-pager --lines=10
+
+echo "❌ Не удалось запустить сервис"
+systemctl status $SERVICE_NAME --no-pager
+journalctl -u $SERVICE_NAME --no-pager --lines=10
 exit 1
-EOF
-    
-    chmod +x /tmp/restart_bot_at.sh
-    
-    # Планируем выполнение через at
-    if echo "/tmp/restart_bot_at.sh > /tmp/restart_bot.log 2>&1" | at now + 3 seconds; then
-        echo "✅ Задача отложенного перезапуска создана через 'at'"
-    else
-        echo "❌ Ошибка создания задачи 'at', используем fallback"
-        # Fallback к старому методу
-        nohup /tmp/restart_bot_at.sh > /tmp/restart_bot.log 2>&1 &
-    fi
-    
-else
-    echo "⚠️ Команда 'at' недоступна, используем nohup"
-    
-    # Fallback к старому методу nohup
-    cat > /tmp/restart_bot.sh << 'EOF'
-#!/bin/bash
-echo "🔄 Отложенный перезапуск начат в $(date)"
-sleep 3
-echo "🚀 Запуск сервиса gpttg-bot..."
-systemctl start gpttg-bot
-sleep 5
-for i in {1..6}; do
-    if systemctl is-active --quiet gpttg-bot; then
-        echo "✅ Сервис gpttg-bot успешно запущен в $(date)"
-        systemctl status gpttg-bot --no-pager --lines=3
-        exit 0
-    fi
-    echo "⏳ Попытка $i/6: ожидание запуска сервиса в $(date)..."
-    sleep 5
-done
-echo "❌ Не удалось запустить сервис после 6 попыток в $(date)"
-journalctl -u gpttg-bot --no-pager --lines=10
-exit 1
-EOF
-
-    chmod +x /tmp/restart_bot.sh
-    
-    # Запуск отложенного скрипта в фоне через nohup
-    if nohup /tmp/restart_bot.sh > /tmp/restart_bot.log 2>&1 &; then
-        echo "✅ Отложенный скрипт запущен в фоне через nohup"
-    else
-        echo "❌ Ошибка запуска отложенного скрипта!"
-        # Прямой запуск в качестве backup
-        echo "🔄 Попытка прямого запуска сервиса..."
-        systemctl start $SERVICE_NAME || echo "❌ Прямой запуск тоже не удался"
-    fi
-fi
-
-# Выводим версию приложения из pyproject.toml
-if [ -f "pyproject.toml" ]; then
-    VERSION=$(grep '^version' pyproject.toml | head -1 | awk -F '"' '{print $2}')
-    echo "🎉 Обновление завершено! Версия приложения: $VERSION"
-fi
-
-echo "=== Обновление GPTTG завершено успешно ==="
-echo "🔄 Сервис будет перезапущен через 3-5 секунд"
-echo "📋 Логи перезапуска: tail -f /tmp/restart_bot.log"
-echo "📊 Статус сервиса: sudo systemctl status gpttg-bot"
