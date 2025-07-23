@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
 import asyncio
 import os
+import subprocess
 from pathlib import Path
 
 from bot.config import settings
@@ -70,7 +71,9 @@ async def cmd_help(msg: Message):
             "/stat — общая статистика",
             "/models — показать доступные модели",
             "/setmodel — изменить текущую модель",
-            "/status — статус системы"
+            "/status — статус системы",
+            "/updatelogs — логи обновления",
+            "/updatetest — тест автообновления"
         ])
         keyboard = ADMIN_INLINE_KB
     else:
@@ -339,7 +342,7 @@ async def callback_setmodel(callback: CallbackQuery):
 
 # ——— /reset —————————————————————————————————————————————— #
 @router.message(F.text.startswith("/reset"))
-async def cmd_reset(msg: Message):
+async def cmd_reset(msg: Message, state: FSMContext):
     """Удаляет сохранённый previous_response_id и все файлы OpenAI для чата."""
     # Удаляем файлы из OpenAI и БД
     await OpenAIClient.delete_files_by_chat(msg.chat.id)
@@ -572,3 +575,128 @@ async def callback_admin_check_update(callback: CallbackQuery):
     else:
         await callback.message.answer(f"✅ Установлена актуальная версия: {VERSION}")
     await callback.answer()  # Убрали show_alert=True и текст всплывающего сообщения
+
+
+# ——— /updatelogs (админ) ———————————————————————————————— #
+@router.message(F.text == "/updatelogs")
+async def cmd_update_logs(msg: Message):
+    """Показывает логи последнего обновления (только для админа)."""
+    if msg.from_user.id != settings.admin_id:
+        return
+    
+    log_files = [
+        "/tmp/update.log",
+        "/tmp/simple_update.log", 
+        "/tmp/restart_bot.log",
+        "/tmp/gpttg_update.log"
+    ]
+    
+    logs_found = []
+    
+    for log_file in log_files:
+        try:
+            if os.path.exists(log_file):
+                with open(log_file, 'r') as f:
+                    content = f.read()
+                if content.strip():
+                    # Берём последние 1000 символов
+                    if len(content) > 1000:
+                        content = "...\n" + content[-1000:]
+                    logs_found.append(f"📄 {log_file}:\n```\n{content}\n```")
+        except Exception as e:
+            logs_found.append(f"❌ Ошибка чтения {log_file}: {e}")
+    
+    if logs_found:
+        # Отправляем логи по частям если нужно
+        for log_content in logs_found:
+            if len(log_content) <= 4096:
+                await msg.answer(log_content, parse_mode="Markdown")
+            else:
+                # Разбиваем большие логи
+                chunks = [log_content[i:i+4000] for i in range(0, len(log_content), 4000)]
+                for chunk in chunks:
+                    await msg.answer(chunk, parse_mode="Markdown")
+    else:
+        await msg.answer("📝 Логи обновления не найдены")
+
+
+# ——— /updatetest (админ) ———————————————————————————————— #
+@router.message(F.text == "/updatetest")
+async def cmd_update_test(msg: Message):
+    """Тестирует систему автообновления (только для админа)."""
+    if msg.from_user.id != settings.admin_id:
+        return
+    
+    from bot.utils.updater import SimpleUpdater
+    
+    # Проверяем доступность системных команд
+    tests = []
+    
+    # Проверяем git
+    try:
+        result = subprocess.run(['git', '--version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            tests.append("✅ Git доступен")
+        else:
+            tests.append("❌ Git недоступен")
+    except Exception:
+        tests.append("❌ Git недоступен")
+    
+    # Проверяем systemctl
+    try:
+        result = subprocess.run(['systemctl', '--version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            tests.append("✅ Systemctl доступен")
+        else:
+            tests.append("❌ Systemctl недоступен")
+    except Exception:
+        tests.append("❌ Systemctl недоступен")
+    
+    # Проверяем at
+    try:
+        result = subprocess.run(['which', 'at'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            at_result = subprocess.run(['systemctl', 'is-active', 'atd'], capture_output=True, text=True, timeout=5)
+            if at_result.returncode == 0:
+                tests.append("✅ Команда 'at' доступна и служба atd активна")
+            else:
+                tests.append("⚠️ Команда 'at' есть, но служба atd неактивна")
+        else:
+            tests.append("❌ Команда 'at' недоступна")
+    except Exception:
+        tests.append("❌ Команда 'at' недоступна")
+    
+    # Проверяем права записи в /tmp
+    try:
+        test_file = "/tmp/gpttg_test.txt"
+        with open(test_file, 'w') as f:
+            f.write("test")
+        os.remove(test_file)
+        tests.append("✅ Запись в /tmp доступна")
+    except Exception:
+        tests.append("❌ Запись в /tmp недоступна")
+    
+    # Проверяем статус сервиса
+    try:
+        result = subprocess.run(['systemctl', 'is-active', 'gpttg-bot'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            tests.append("✅ Сервис gpttg-bot активен")
+        else:
+            tests.append("❌ Сервис gpttg-bot неактивен")
+    except Exception:
+        tests.append("❌ Не удалось проверить статус сервиса")
+    
+    # Тестируем создание скрипта обновления
+    if SimpleUpdater.create_update_script():
+        tests.append("✅ Скрипт обновления создаётся успешно")
+    else:
+        tests.append("❌ Ошибка создания скрипта обновления")
+    
+    test_results = "\n".join(tests)
+    
+    await msg.answer(
+        f"🧪 Результаты тестирования автообновления:\n\n{test_results}\n\n"
+        f"📍 Текущая платформа: {settings.platform}\n"
+        f"📍 Режим разработки: {'да' if settings.is_development else 'нет'}\n"
+        f"📍 Linux: {'да' if settings.is_linux else 'нет'}"
+    )

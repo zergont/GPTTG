@@ -39,56 +39,119 @@ class SimpleUpdater:
         """Создаёт простой скрипт обновления."""
         script_content = f"""#!/bin/bash
 # Простой скрипт автообновления GPTTG
-set -e
+# Логирование всех операций
+exec > /tmp/update.log 2>&1
+
+echo "🔄 Начало автообновления в $(date)"
+echo "📍 Текущая директория: $(pwd)"
+echo "👤 Пользователь: $(whoami)"
 
 REPO_DIR="{Path.cwd()}"
 SERVICE_NAME="gpttg-bot"
 
-echo "🔄 Начало автообновления в $(date)"
-cd "$REPO_DIR"
+cd "$REPO_DIR" || {{
+    echo "❌ Не удалось перейти в директорию $REPO_DIR"
+    exit 1
+}}
+
+echo "🔍 Содержимое директории:"
+ls -la
 
 # Сохраняем важные файлы
-cp .env .env.backup 2>/dev/null || true
-cp bot/bot.sqlite bot.sqlite.backup 2>/dev/null || true
+echo "💾 Сохранение важных файлов..."
+cp .env .env.backup 2>/dev/null && echo "✅ .env сохранён" || echo "⚠️ .env не найден"
+cp bot/bot.sqlite bot.sqlite.backup 2>/dev/null && echo "✅ база сохранена" || echo "⚠️ база не найдена"
 
 # Останавливаем сервис
 echo "🛑 Остановка сервиса..."
-systemctl stop $SERVICE_NAME
+if systemctl stop $SERVICE_NAME; then
+    echo "✅ Сервис остановлен"
+else
+    echo "⚠️ Ошибка остановки сервиса, но продолжаем"
+fi
 
 # Обновляем код
 echo "📥 Обновление кода..."
-git fetch origin
-git reset --hard origin/beta
+if git fetch origin; then
+    echo "✅ git fetch выполнен"
+else
+    echo "❌ Ошибка git fetch"
+    exit 1
+fi
+
+if git reset --hard origin/beta; then
+    echo "✅ git reset выполнен"
+else
+    echo "❌ Ошибка git reset"
+    exit 1
+fi
 
 # Восстанавливаем файлы
-mv .env.backup .env 2>/dev/null || true
-mv bot.sqlite.backup bot/bot.sqlite 2>/dev/null || true
+echo "🔄 Восстановление файлов..."
+mv .env.backup .env 2>/dev/null && echo "✅ .env восстановлен" || echo "⚠️ .env не восстановлен"
+mv bot.sqlite.backup bot/bot.sqlite 2>/dev/null && echo "✅ база восстановлена" || echo "⚠️ база не восстановлена"
 
 # Обновляем зависимости
 echo "📦 Обновление зависимостей..."
 export PATH="$HOME/.local/bin:$PATH"
-poetry install --only=main 2>/dev/null || pip install -r requirements.txt
 
-# Перезапускаем сервис
-echo "🚀 Запуск сервиса..."
-systemctl start $SERVICE_NAME
-
-# Проверяем статус
-sleep 5
-if systemctl is-active --quiet $SERVICE_NAME; then
-    echo "✅ Обновление завершено успешно!"
-    systemctl status $SERVICE_NAME --no-pager --lines=3
+if command -v poetry &> /dev/null; then
+    echo "🔧 Используем Poetry..."
+    if poetry install --only=main; then
+        echo "✅ Poetry install успешно"
+    else
+        echo "⚠️ Ошибка poetry install, пробуем pip"
+        pip install -r requirements.txt
+    fi
 else
-    echo "❌ Ошибка запуска сервиса"
-    journalctl -u $SERVICE_NAME --no-pager --lines=5
+    echo "🔧 Poetry не найден, используем pip..."
+    pip install -r requirements.txt
+fi
+
+# Обновляем systemd сервис если нужно
+if [ -f "gpttg-bot.service" ]; then
+    echo "⚙️ Обновление systemd сервиса..."
+    cp gpttg-bot.service /etc/systemd/system/
+    systemctl daemon-reload
+    echo "✅ Systemd сервис обновлён"
+fi
+
+# Запускаем сервис
+echo "🚀 Запуск сервиса..."
+if systemctl start $SERVICE_NAME; then
+    echo "✅ Команда запуска выполнена"
+else
+    echo "❌ Ошибка команды запуска"
     exit 1
 fi
+
+# Проверяем статус с расширенным ожиданием
+echo "⏳ Ожидание запуска сервиса..."
+for i in {{1..10}}; do
+    sleep 2
+    if systemctl is-active --quiet $SERVICE_NAME; then
+        echo "✅ Сервис запущен успешно! Попытка $i/10"
+        systemctl status $SERVICE_NAME --no-pager --lines=3
+        echo "🎉 Обновление завершено успешно в $(date)"
+        exit 0
+    else
+        echo "⏳ Попытка $i/10: сервис ещё не запущен..."
+    fi
+done
+
+echo "❌ Сервис не запустился за 20 секунд"
+echo "📋 Статус сервиса:"
+systemctl status $SERVICE_NAME --no-pager
+echo "📋 Последние логи:"
+journalctl -u $SERVICE_NAME --no-pager --lines=10
+exit 1
 """
         
         try:
             with open(SimpleUpdater.UPDATE_SCRIPT_PATH, "w") as f:
                 f.write(script_content)
             os.chmod(SimpleUpdater.UPDATE_SCRIPT_PATH, 0o755)
+            logger.info(f"Скрипт обновления создан: {SimpleUpdater.UPDATE_SCRIPT_PATH}")
             return True
         except Exception as e:
             logger.error(f"Ошибка создания скрипта обновления: {e}")
@@ -103,27 +166,61 @@ fi
         if not SimpleUpdater.create_update_script():
             return False, "Не удалось создать скрипт обновления"
         
+        logger.info("Запуск процесса автообновления...")
+        
         try:
-            # Запускаем скрипт с отложенным выполнением
-            cmd = f"echo '{SimpleUpdater.UPDATE_SCRIPT_PATH}' | at now + 5 seconds"
-            result = subprocess.run(
-                cmd, 
+            # Сначала проверяем, доступна ли команда at
+            at_check = subprocess.run(
+                "command -v at && systemctl is-active --quiet atd", 
                 shell=True, 
                 capture_output=True, 
-                text=True, 
-                timeout=5
+                timeout=3
             )
             
-            if result.returncode == 0:
-                return True, "Обновление запущено и будет выполнено через 5 секунд"
-            else:
-                # Fallback к nohup если at недоступен
-                cmd = f"nohup {SimpleUpdater.UPDATE_SCRIPT_PATH} > /tmp/update.log 2>&1 &"
-                result = subprocess.run(cmd, shell=True, timeout=3)
-                return True, "Обновление запущено в фоновом режиме"
+            if at_check.returncode == 0:
+                # Используем at для отложенного выполнения
+                logger.info("Используем команду 'at' для отложенного обновления")
+                cmd = f"echo '{SimpleUpdater.UPDATE_SCRIPT_PATH}' | at now + 3 seconds"
+                result = subprocess.run(
+                    cmd, 
+                    shell=True, 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=5
+                )
                 
-        except subprocess.TimeoutExpired:
-            return False, "Превышено время ожидания запуска обновления"
-        except Exception as e:
-            logger.error(f"Ошибка запуска обновления: {e}")
-            return False, f"Ошибка: {str(e)[:100]}"
+                if result.returncode == 0:
+                    logger.info("Обновление запланировано через 'at'")
+                    return True, "Обновление запущено через 'at' и будет выполнено через 3 секунды"
+                else:
+                    logger.warning(f"Ошибка 'at': {result.stderr}")
+                    raise Exception("at failed")
+            else:
+                logger.warning("Команда 'at' недоступна, используем nohup")
+                raise Exception("at not available")
+                
+        except Exception:
+            # Fallback к nohup
+            try:
+                logger.info("Используем nohup для фонового обновления")
+                cmd = f"nohup {SimpleUpdater.UPDATE_SCRIPT_PATH} &"
+                result = subprocess.run(
+                    cmd, 
+                    shell=True, 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=3
+                )
+                
+                if result.returncode == 0:
+                    logger.info("Обновление запущено через nohup")
+                    return True, "Обновление запущено в фоновом режиме"
+                else:
+                    logger.error(f"Ошибка nohup: {result.stderr}")
+                    return False, f"Ошибка запуска через nohup: {result.stderr[:100]}"
+                    
+            except subprocess.TimeoutExpired:
+                return False, "Превышено время ожидания запуска обновления"
+            except Exception as e:
+                logger.error(f"Ошибка запуска обновления: {e}")
+                return False, f"Критическая ошибка: {str(e)[:100]}"
