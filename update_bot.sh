@@ -21,7 +21,7 @@ export PATH="/root/.local/bin:/usr/local/bin:/usr/bin:$PATH"
 
 log "📦  Git pull"
 git fetch --all
-git reset --hard origin/beta
+git reset --hard origin/master
 
 # Poetry, если нет
 if ! command -v poetry &>/dev/null; then

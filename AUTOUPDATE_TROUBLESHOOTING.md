@@ -55,7 +55,7 @@ sudo systemctl enable --now atd
 cd /root/GPTTG
 git status
 git fetch origin
-git reset --hard origin/beta
+git reset --hard origin/master
 ```
 
 #### Проблема 3: Проблемы с зависимостями
@@ -102,7 +102,7 @@ sudo ./update_bot.sh
 
 # 3. Если update_bot.sh не работает - упрощённое обновление:
 git fetch origin
-git reset --hard origin/beta
+git reset --hard origin/master
 poetry install --only=main
 sudo systemctl start gpttg-bot
 ```

@@ -19,7 +19,7 @@ class SimpleUpdater:
     async def check_remote_version() -> Optional[str]:
         """Проверяет версию на GitHub."""
         try:
-            url = "https://raw.githubusercontent.com/zergont/GPTTG/beta/pyproject.toml"
+            url = "https://raw.githubusercontent.com/zergont/GPTTG/master/pyproject.toml"
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=10) as resp:
                     if resp.status != 200:
@@ -79,7 +79,7 @@ else
     exit 1
 fi
 
-if git reset --hard origin/beta; then
+if git reset --hard origin/master; then
     echo "✅ git reset выполнен"
 else
     echo "❌ Ошибка git reset"
