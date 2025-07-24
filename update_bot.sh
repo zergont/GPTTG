@@ -21,7 +21,7 @@ export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:$PATH"
 
 log "📦  Получаем изменения из Git"
 git fetch --all
-git reset --hard origin/beta
+git reset --hard origin/master
 
 # Ставим Poetry, если вдруг нет (через python3 - m pip)
 if ! command -v poetry &>/dev/null; then
