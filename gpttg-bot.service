@@ -1,17 +1,26 @@
-[Unit]
+﻿[Unit]
 Description=GPTTG Telegram Bot
 After=network.target
 
 [Service]
 Type=simple
 User=root
+
+# каталог проекта
 WorkingDirectory=/root/GPTTG
+
+# создаём каталог логов (разово)
 ExecStartPre=/usr/bin/env mkdir -p /root/GPTTG/logs
-# ������ ����� Poetry, ����� �� �������� �� ���� .venv
-ExecStart=/usr/bin/env bash -c 'source /etc/profile && cd /root/GPTTG && poetry run python -m bot.main'
+
+# ► Запускаем через poetry + python3
+ExecStart=/usr/bin/env bash -c 'source /etc/profile && cd /root/GPTTG && poetry run python3 -m bot.main'
+
 Restart=always
 RestartSec=5
+
+# переменные окружения
 EnvironmentFile=/root/GPTTG/.env
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 
 [Install]
