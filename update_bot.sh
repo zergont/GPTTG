@@ -5,13 +5,11 @@ set -euo pipefail
 SERVICE_NAME="gpttg-bot"
 REPO_DIR="/root/GPTTG"
 LOG_FILE="/var/log/gpttg-update.log"
-# Укажите ветку для прода (по умолчанию beta). Можно переопределить
-TARGET_BRANCH="${1:-${TARGET_BRANCH:-master}}"
+TARGET_BRANCH="${1:-${TARGET_BRANCH:-master}}"  # default master
 
-# 🔄 Очищаем предыдущий лог, чтобы каждая сессия начиналась с нуля
-: > "$LOG_FILE"
+: > "$LOG_FILE"  # очистка лога
 
-# ── Конфигурация вывода ─────────────────────────────────────────────────────
+# ── Настройка вывода ──
 if command -v systemd-cat &>/dev/null; then
   if [ -t 1 ]; then
     exec > >(tee -a "$LOG_FILE" | tee /dev/tty | systemd-cat -t gpttg-update) 2>&1
@@ -31,33 +29,20 @@ log() { printf '[%s] %s
 trap 'log "❌  Ошибка на строке $LINENO"' ERR
 
 log "▶️  Начало обновления (ветка $TARGET_BRANCH)"
-
 cd "$REPO_DIR"
 
-# Poetry‑виртуалка внутри проекта
 export POETRY_VIRTUALENVS_IN_PROJECT=true
 export PATH="/root/.local/bin:/usr/local/bin:/usr/bin:$PATH"
 
-# ── Git pull ────────────────────────────────────────────────────────────────
+# ── Git fetch/reset ──
 log "📦  git fetch origin $TARGET_BRANCH"
-if ! git fetch origin "$TARGET_BRANCH"; then
-  log "⚠️  Не удалось fetch origin/$TARGET_BRANCH — пробую master"
-  TARGET_BRANCH="master"
-  git fetch origin "$TARGET_BRANCH"
-fi
-
-if ! git show-ref --verify --quiet "refs/remotes/origin/$TARGET_BRANCH"; then
-  log "❗  origin/$TARGET_BRANCH не существует. Завершаю."
-  exit 1
-fi
-
+git fetch origin "$TARGET_BRANCH"
 LATEST_HASH=$(git rev-parse --short "origin/$TARGET_BRANCH")
 log "ℹ️  Целевая версия $LATEST_HASH"
-
 git reset --hard "origin/$TARGET_BRANCH"
 REVISION="$LATEST_HASH"
 
-# ── Poetry & зависимости ────────────────────────────────────────────────────
+# ── Poetry env ──
 if ! command -v poetry &>/dev/null; then
   log "🛠  Устанавливаю Poetry"
   python3 -m pip install --upgrade --user poetry
@@ -68,16 +53,27 @@ if [[ ! -x .venv/bin/python ]]; then
   poetry install --only=main --no-interaction --no-ansi
 fi
 
-log "🔄  poetry install"
-poetry install --only=main --no-interaction --no-ansi
+# ── Обновление зависимостей ──
+log "🔐  Обновляю lock‑файл"
+poetry lock --no-interaction --no-ansi || log "⚠️  poetry lock завершился предупреждением, продолжаю"
 
-# ── Переписываем unit‑файл ───────────────────────────────────────────────────
+log "🔄  poetry install"
+set +e
+poetry install --only=main --no-interaction --no-ansi
+INSTALL_EXIT=$?
+set -e
+if [[ $INSTALL_EXIT -ne 0 ]]; then
+  log "⚠️  poetry install не прошёл (код $INSTALL_EXIT), пробую восстановить lock и повторить"
+  poetry lock --no-interaction --no-ansi
+  poetry install --only=main --no-interaction --no-ansi
+fi
+
+# ── Unit file ──
 UNIT_SRC="$REPO_DIR/gpttg-bot.service"
 UNIT_DST="/etc/systemd/system/gpttg-bot.service"
 log "📝  Копирую unit‑файл -> $UNIT_DST"
 cp -f "$UNIT_SRC" "$UNIT_DST"
 
-# ── Перезапуск ───────────────────────────────────────────────────────────────
 log "🚀  daemon-reload + restart"
 systemctl daemon-reload
 systemctl restart "$SERVICE_NAME"
