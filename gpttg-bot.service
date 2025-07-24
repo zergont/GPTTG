@@ -5,22 +5,20 @@ After=network.target
 [Service]
 Type=simple
 User=root
-
-# каталог проекта
 WorkingDirectory=/root/GPTTG
 
-# создаём каталог логов (разово)
+# Логи, если каталога ещё нет
 ExecStartPre=/usr/bin/env mkdir -p /root/GPTTG/logs
 
-# ► Запускаем через poetry + python3
+# ── Запуск через poetry + python3 ──
 ExecStart=/usr/bin/env bash -c 'source /etc/profile && cd /root/GPTTG && poetry run python3 -m bot.main'
 
 Restart=always
 RestartSec=5
 
-# переменные окружения
+# 👉 PATH включает /root/.local/bin
+Environment=PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=/root/GPTTG/.env
-Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 
 [Install]
