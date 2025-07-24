@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "gpttg"
-version = "1.6.15"
+version = "1.6.16"
 description = "Кроссплатформенный Telegram-бот на OpenAI Responses API с мультимодальностью, учётом расходов и пошаговой генерацией изображений"
 authors = ["zergont <Folist@gmail.com>"]
 license = "MIT"
