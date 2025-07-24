@@ -364,3 +364,6 @@ FodyWeavers.xsd
 /.env
 /bot/bot.sqlite
 /README — копия.md
+/gpttg-bot.lock
+/Bot_2.pyproj
+/Bot_2.sln

@@ -30,12 +30,20 @@ CREATE TABLE IF NOT EXISTS usage (
     model     TEXT    NOT NULL,
     ts        DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+-- Таблица для хранения file_id загруженных в OpenAI файлов
+CREATE TABLE IF NOT EXISTS openai_files (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id    INTEGER NOT NULL,
+    file_id    TEXT NOT NULL,
+    uploaded   DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE INDEX IF NOT EXISTS idx_usage_chat_id ON usage(chat_id);
 CREATE INDEX IF NOT EXISTS idx_usage_user_id ON usage(user_id);
 CREATE INDEX IF NOT EXISTS idx_usage_model ON usage(model);
 CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage(ts);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_openai_files_chat_id ON openai_files(chat_id);
 
 -- Вставляем дефолтную модель
 INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('current_model', 'gpt-4o-mini');

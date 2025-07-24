@@ -26,7 +26,7 @@ async def init_db():
         if not schema_path.exists():
             raise FileNotFoundError(f"Schema file not found: {schema_path}")
         
-        # Читаем файл в utf-8-sig чтобы корректно обработать BOM
+        # Читаем файл в utf-8-sig чтобы корректо обработать BOM
         sql_script = schema_path.read_text(encoding='utf-8-sig')
         
         async with get_conn() as db:
@@ -98,3 +98,34 @@ async def get_user_display_name(user_id: int) -> str:
                 return str(user_id)
         else:
             return str(user_id)
+
+
+async def save_openai_file_id(chat_id: int, file_id: str):
+    """Сохраняет file_id загруженного в OpenAI файла для чата."""
+    async with get_conn() as db:
+        await db.execute(
+            "INSERT INTO openai_files (chat_id, file_id) VALUES (?, ?)",
+            (chat_id, file_id)
+        )
+        await db.commit()
+
+
+async def get_openai_file_ids_by_chat(chat_id: int) -> list[str]:
+    """Возвращает список file_id для данного чата."""
+    async with get_conn() as db:
+        cur = await db.execute(
+            "SELECT file_id FROM openai_files WHERE chat_id = ?",
+            (chat_id,)
+        )
+        rows = await cur.fetchall()
+        return [row[0] for row in rows]
+
+
+async def delete_openai_file_ids_by_chat(chat_id: int):
+    """Удаляет все file_id для данного чата из таблицы openai_files."""
+    async with get_conn() as db:
+        await db.execute(
+            "DELETE FROM openai_files WHERE chat_id = ?",
+            (chat_id,)
+        )
+        await db.commit()

@@ -1,0 +1,20 @@
+[Unit]
+Description=GPTTG Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/GPTTG
+ExecStartPre=/bin/mkdir -p /root/GPTTG/logs
+ExecStart=/root/GPTTG/.venv/bin/python3 -m bot.main
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/root/GPTTG
+
+[Install]
+WantedBy=multi-user.target
+# Save this file as gpttg-bot.service in /etc/systemd/system/
