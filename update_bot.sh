@@ -6,7 +6,7 @@ SERVICE_NAME="gpttg-bot"
 REPO_DIR="/root/GPTTG"
 LOG_FILE="/var/log/gpttg-update.log"
 # Укажите ветку для прода (по умолчанию beta). Можно переопределить
-TARGET_BRANCH="${1:-${TARGET_BRANCH:-beta}}"
+TARGET_BRANCH="${1:-${TARGET_BRANCH:-master}}"
 
 # 🔄 Очищаем предыдущий лог, чтобы каждая сессия начиналась с нуля
 : > "$LOG_FILE"
