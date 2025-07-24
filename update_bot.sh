@@ -48,25 +48,12 @@ if ! command -v poetry &>/dev/null; then
   python3 -m pip install --upgrade --user poetry
 fi
 
-if [[ ! -x .venv/bin/python ]]; then
-  log "📚  .venv отсутствует — создаю"
-  poetry install --only=main --no-interaction --no-ansi
-fi
-
-# ── Обновление зависимостей ──
-log "🔐  Обновляю lock‑файл"
-poetry lock --no-interaction --no-ansi || log "⚠️  poetry lock завершился предупреждением, продолжаю"
+# ── Генерируем/обновляем lock и ставим зависимости ──
+log "🔐  Генерирую lock‑файл"
+poetry lock --no-interaction --no-ansi
 
 log "🔄  poetry install"
-set +e
 poetry install --only=main --no-interaction --no-ansi
-INSTALL_EXIT=$?
-set -e
-if [[ $INSTALL_EXIT -ne 0 ]]; then
-  log "⚠️  poetry install не прошёл (код $INSTALL_EXIT), пробую восстановить lock и повторить"
-  poetry lock --no-interaction --no-ansi
-  poetry install --only=main --no-interaction --no-ansi
-fi
 
 # ── Unit file ──
 UNIT_SRC="$REPO_DIR/gpttg-bot.service"
