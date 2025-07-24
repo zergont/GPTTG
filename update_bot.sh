@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# ── Авто‑обновление GPTTG ────────────────────────────────────────────────────
+# ── Авто‑обновление GPTTG ─────────────────────────────────────────────
 set -euo pipefail
 
 SERVICE_NAME="gpttg-bot"
 REPO_DIR="/root/GPTTG"
 LOG_FILE="/var/log/gpttg-update.log"
-TARGET_BRANCH="${1:-${TARGET_BRANCH:-master}}"  # default master
+TARGET_BRANCH="${1:-${TARGET_BRANCH:-master}}"  # можно передать ветку параметром
 
-: > "$LOG_FILE"  # очистка лога
+: > "$LOG_FILE"   # очищаем лог
 
 # ── Настройка вывода ──
 if command -v systemd-cat &>/dev/null; then
@@ -24,8 +24,7 @@ else
   fi
 fi
 
-log() { printf '[%s] %s
-' "$(date -Iseconds)" "$*"; }
+log() { printf '[%s] %s\n' "$(date -Iseconds)" "$*"; }
 trap 'log "❌  Ошибка на строке $LINENO"' ERR
 
 log "▶️  Начало обновления (ветка $TARGET_BRANCH)"
@@ -42,26 +41,25 @@ log "ℹ️  Целевая версия $LATEST_HASH"
 git reset --hard "origin/$TARGET_BRANCH"
 REVISION="$LATEST_HASH"
 
-# ── Poetry env ──
+# ── Poetry ──
 if ! command -v poetry &>/dev/null; then
   log "🛠  Устанавливаю Poetry"
   python3 -m pip install --upgrade --user poetry
 fi
 
-# ── Генерируем/обновляем lock и ставим зависимости ──
 log "🔐  Генерирую lock‑файл"
 poetry lock --no-interaction --no-ansi
 
 log "🔄  poetry install"
 poetry install --only=main --no-interaction --no-ansi
 
-# ── Unit file ──
+# ── Обновляем unit‑файл бота ──
 UNIT_SRC="$REPO_DIR/gpttg-bot.service"
 UNIT_DST="/etc/systemd/system/gpttg-bot.service"
-log "📝  Копирую unit‑файл -> $UNIT_DST"
+log "📝  Копирую unit‑файл → $UNIT_DST"
 cp -f "$UNIT_SRC" "$UNIT_DST"
 
-log "🚀  daemon-reload + restart"
+log "🚀  daemon‑reload + restart"
 systemctl daemon-reload
 systemctl restart "$SERVICE_NAME"
 
