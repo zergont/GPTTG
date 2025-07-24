@@ -6,17 +6,12 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/root/GPTTG
-
-# Логи, если каталога ещё нет
 ExecStartPre=/usr/bin/env mkdir -p /root/GPTTG/logs
-
-# ── Запуск через poetry + python3 ──
 ExecStart=/usr/bin/env bash -c 'source /etc/profile && cd /root/GPTTG && poetry run python3 -m bot.main'
-
 Restart=always
 RestartSec=5
 
-# 👉 PATH включает /root/.local/bin
+# ➜ PATH включает poetry из /root/.local/bin
 Environment=PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=/root/GPTTG/.env
 Environment=PYTHONUNBUFFERED=1

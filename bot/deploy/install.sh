@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
+# ── Установка GPTTG на сервер ─────────────────────────────────────────────
 set -euo pipefail
 
-REPO_DIR="$(dirname "$(readlink -f "$0")")/.."   # корень репо
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"   # bot/deploy
+REPO_DIR="$(dirname "$SCRIPT_DIR")/.."          # корень GPTTG
+
 cd "$REPO_DIR"
 
-# 1️⃣  Копируем unit‑файлы
-sudo cp gpttg-bot.service            /etc/systemd/system/
-sudo cp deploy/systemd/gpttg-update.* /etc/systemd/system/
+echo "📦  Копируем systemd‑unit‑файлы…"
+sudo cp gpttg-bot.service                    /etc/systemd/system/
+sudo cp bot/deploy/systemd/gpttg-update.*    /etc/systemd/system/
 
-# 2️⃣  Делаем скрипт обновления исполняемым
+echo "🔧  Делаем update_bot.sh исполняемым…"
 sudo chmod +x "$REPO_DIR/update_bot.sh"
 
-# 3️⃣  Регистрируем службу и таймер
+echo "🔄  Перезагружаем systemd и запускаем службы…"
 sudo systemctl daemon-reload
 sudo systemctl enable --now gpttg-bot.service
 sudo systemctl enable --now gpttg-update.timer

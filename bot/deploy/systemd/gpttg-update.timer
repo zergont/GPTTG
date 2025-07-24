@@ -2,8 +2,7 @@
 Description=Daily GPTTG update at 13:00 MSK (10:00 UTC)
 
 [Timer]
-# 10:00 UTC ≈ 13:00 Europe/Moscow
-OnCalendar=*-*-* 10:00:00
+OnCalendar=*-*-* 10:00:00      # 10:00 UTC ≈ 13:00 Moscow
 Persistent=true
 
 [Install]
