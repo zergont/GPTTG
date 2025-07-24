@@ -6,15 +6,13 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/root/GPTTG
-ExecStartPre=/bin/mkdir -p /root/GPTTG/logs
-ExecStart=/root/GPTTG/.venv/bin/python3 -m bot.main
+ExecStartPre=/usr/bin/env mkdir -p /root/GPTTG/logs
+# «апуск через Poetry, чтобы не зависеть от пути .venv
+ExecStart=/usr/bin/env bash -c 'source /etc/profile && cd /root/GPTTG && poetry run python -m bot.main'
 Restart=always
 RestartSec=5
-StandardOutput=journal
-StandardError=journal
+EnvironmentFile=/root/GPTTG/.env
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/root/GPTTG
 
 [Install]
 WantedBy=multi-user.target
-# Save this file as gpttg-bot.service in /etc/systemd/system/
