@@ -73,6 +73,14 @@ UNIT_SRC="$REPO_DIR/gpttg-bot.service"
 UNIT_DST="/etc/systemd/system/gpttg-bot.service"
 log "📝  Копирую unit‑файл в $UNIT_DST"
 cp -f "$UNIT_SRC" "$UNIT_DST"
+
+TIMER_SRC="$REPO_DIR/bot/deploy/systemd/gpttg-update.timer"
+SERVICE_SRC="$REPO_DIR/bot/deploy/systemd/gpttg-update.service"
+
+cp -f "$SERVICE_SRC" /etc/systemd/system/gpttg-update.service
+cp -f "$TIMER_SRC"   /etc/systemd/system/gpttg-update.timer
+
+
 systemctl daemon-reload
 
 # ── Перезапуск бота ───────────────────────────────────────────────────
