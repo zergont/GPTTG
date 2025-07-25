@@ -21,3 +21,6 @@ sudo systemctl enable --now gpttg-update.timer
 BOT_STATUS=$(systemctl is-active gpttg-bot.service)
 TIMER_STATUS=$(systemctl is-active gpttg-update.timer)
 echo "✅ GPTTG установлен. Бот: $BOT_STATUS, Таймер: $TIMER_STATUS"
+
+echo "✅  Перезагружаю бота"
+sudo systemctl restart gpttg-bot.service
