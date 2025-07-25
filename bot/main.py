@@ -14,6 +14,10 @@ from bot import router
 from bot.utils.log import logger
 from bot.utils.http_client import close_session
 from bot.utils.updater import SimpleUpdater
+from bot.handlers import admin_update     # ← импорт
+
+
+
 
 
 async def send_update_prompt(bot, admin_id, current_version, remote_version):
@@ -144,7 +148,7 @@ async def main():
     # Регистрируем роутеры
     dp.include_router(router)  # Главный роутер из bot/__init__.py
     dp.include_router(update_router)
-    
+    dp.include_router(admin_update.router)    # ← регистрация
     logger.info("Starting bot…")
     await notify_update(bot)
     setup_cron(bot)
