@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_DIR="$(dirname "$(readlink -f "$0")")/.."   # корень GPTTG
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"   # bot/deploy
+REPO_DIR="$(dirname "$SCRIPT_DIR")/.."          # корень GPTTG
 cd "$REPO_DIR"
 
-echo "📦  Копируем unit‑файлы…"
-sudo cp gpttg-bot.service                     /etc/systemd/system/
-sudo cp bot/deploy/systemd/gpttg-update.*     /etc/systemd/system/
+echo "📦  Копирую systemd-unit-файлы…"
+sudo cp gpttg-bot.service                       /etc/systemd/system/
+sudo cp bot/deploy/systemd/gpttg-update.service /etc/systemd/system/
+sudo cp bot/deploy/systemd/gpttg-update.timer   /etc/systemd/system/
 
-echo "🔧  Делаем update_bot.sh исполняемым…"
+echo "🔧  Делаю update_bot.sh исполняемым…"
 sudo chmod +x "$REPO_DIR/update_bot.sh"
 
-echo "🔄  Обновляем systemd…"
+echo "🔄  Перезагружаю systemd и запускаю службы…"
 sudo systemctl daemon-reload
-
-# 🟢  Теперь перезапускаем/включаем всё необходимое
-echo "🚀  Запускаем службы…"
 sudo systemctl enable --now gpttg-bot.service
 sudo systemctl enable --now gpttg-update.timer
 
-echo "✅ GPTTG установлен и запущен."
+BOT_STATUS=$(systemctl is-active gpttg-bot.service)
+TIMER_STATUS=$(systemctl is-active gpttg-update.timer)
+echo "✅ GPTTG установлен. Бот: $BOT_STATUS, Таймер: $TIMER_STATUS"
