@@ -12,7 +12,7 @@ async def cmd_update(message: types.Message):
     await message.answer("⚙️ Обновляюсь…")
     # запускаем скрипт без немедленного рестарта
     proc = await asyncio.create_subprocess_exec(
-        "sudo", "/usr/bin/chmod +x /root/GPTTG/update_bot.sh && /root/GPTTG/update_bot.sh", "--no-restart",
+        "sudo", "bash", "-c", "chmod +x /root/GPTTG/update_bot.sh && /root/GPTTG/update_bot.sh --no-restart",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
@@ -23,3 +23,4 @@ async def cmd_update(message: types.Message):
         f"✅ Обновление завершено:\n<pre>{snippet}</pre>",
         parse_mode="HTML",
     )
+    
