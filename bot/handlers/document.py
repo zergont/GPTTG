@@ -7,6 +7,7 @@ from bot.utils.openai_client import OpenAIClient
 from bot.utils.http_client import download_file
 from bot.utils.log import logger
 from bot.utils.progress import show_progress_indicator
+from bot.utils.html import send_long_html_message
 import openai
 import aiohttp
 
@@ -40,8 +41,8 @@ async def handle_document(msg: Message):
 
         if not is_supported:
             await msg.reply(
-                "📄 **Неподдерживаемый тип файла.**\n\n"
-                "**Поддерживается только PDF-документ.**\n\n"
+                "📄 <b>Неподдерживаемый тип файла.</b>\n\n"
+                "<b>Поддерживается только PDF-документ.</b>\n\n"
                 "💡 Для других форматов: конвертируйте файл в PDF."
             )
             return
@@ -98,36 +99,11 @@ async def handle_document(msg: Message):
         if analyze_task and not analyze_task.done():
             analyze_task.cancel()
 
-        # Отправляем результат БЕЗ MarkdownV2 - используем обычный текст
-        result_text = f"📄 Анализ файла {doc.file_name}:\n\n{response_text}"
+        # Отправляем результат с HTML форматированием
+        result_text = f"📄 <b>Анализ файла {doc.file_name}:</b>\n\n{response_text}"
         
-        # Разбиваем на части если нужно
-        if len(result_text) <= 4096:
-            await msg.answer(result_text)
-        else:
-            # Разбиваем на части вручную без экранирования
-            chunks = []
-            current_pos = 0
-            max_length = 4096
-            
-            while current_pos < len(result_text):
-                end_pos = current_pos + max_length
-                if end_pos >= len(result_text):
-                    chunks.append(result_text[current_pos:])
-                    break
-                
-                # Ищем удобное место для разрыва
-                safe_break = result_text.rfind('\n', current_pos, end_pos)
-                if safe_break == -1 or safe_break == current_pos:
-                    safe_break = result_text.rfind(' ', current_pos, end_pos)
-                if safe_break == -1 or safe_break == current_pos:
-                    safe_break = end_pos
-                
-                chunks.append(result_text[current_pos:safe_break])
-                current_pos = safe_break + (1 if result_text[safe_break:safe_break+1] in ['\n', ' '] else 0)
-            
-            for chunk in chunks:
-                await msg.answer(chunk)
+        # Используем новую функцию для отправки длинных HTML сообщений
+        await send_long_html_message(msg, result_text)
 
     except Exception as e:
         if upload_task and not upload_task.done():

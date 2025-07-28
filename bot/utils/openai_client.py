@@ -174,6 +174,40 @@ class OpenAIClient:
                 logger.error("OpenAI: превышен лимит запросов")
                 await asyncio.sleep(1)
                 raise
+            except openai.NotFoundError as e:
+                # Обрабатываем 404 ошибку - скорее всего файл или response_id устарел
+                error_message = str(e)
+                if "Files" in error_message and "were not found" in error_message:
+                    logger.warning(f"OpenAI файлы не найдены для чата {chat_id}: {error_message}")
+                    logger.info("Очищаем историю чата и файлы, повторяем запрос без previous_response_id")
+                    
+                    # Очищаем историю чата и файлы
+                    await cls.delete_files_by_chat(chat_id)
+                    async with get_conn() as db:
+                        await db.execute(
+                            "DELETE FROM chat_history WHERE chat_id = ?",
+                            (chat_id,)
+                        )
+                        await db.commit()
+                    
+                    # Повторяем запрос без previous_response_id (как новая сессия)
+                    request_params_clean = {
+                        "model": current_model,
+                        "input": [
+                            {
+                                "type": "message",
+                                "content": settings.system_prompt,
+                                "role": "system"
+                            }
+                        ] + user_content,
+                        "store": True
+                    }
+                    
+                    logger.info("Повторный запрос без previous_response_id")
+                    response = await client.responses.create(**request_params_clean)
+                else:
+                    logger.error(f"OpenAI NotFound error: {e}")
+                    raise
             except Exception as e:
                 logger.error(f"OpenAI:unexpected error: {e}")
                 raise
