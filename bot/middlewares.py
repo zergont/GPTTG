@@ -1,8 +1,9 @@
-﻿"""Простые middlewares: инициализация БД и глобальный обработчик ошибок."""
+"""Простые middlewares: инициализация БД и глобальный обработчик ошибок."""
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject, Message
+from aiogram.types import TelegramObject, Message, CallbackQuery
 from bot.utils.log import logger
 from bot.utils.db import init_db, save_user, mark_user_welcomed
+from bot.utils.errors import ErrorHandler
 from bot.keyboards import main_kb
 from bot.config import settings
 
@@ -49,19 +50,27 @@ class UserMiddleware(BaseMiddleware):
 
 
 class ErrorMiddleware(BaseMiddleware):
+    """Глобальный middleware для обработки необработанных ошибок."""
+    
     async def __call__(self, handler, event: TelegramObject, data):
         try:
             return await handler(event, data)
-        except Exception as e:  # noqa: BLE001
-            logger.exception("Необработанная ошибка: %s", e)
+        except Exception as e:
+            # Используем централизованную систему обработки ошибок
+            message = None
+            callback = None
             
-            # Пытаемся отправить сообщение об ошибке пользователю
-            if hasattr(event, "answer"):
-                try:
-                    await event.answer("⚠️ На сервере произошла ошибка. Сообщите администратору.")
-                except Exception as reply_error:
-                    logger.error(f"Не удалось отправить сообщение об ошибке: {reply_error}")
+            if isinstance(event, Message):
+                message = event
+            elif isinstance(event, CallbackQuery):
+                callback = event
+                
+            await ErrorHandler.handle_error(
+                e, 
+                message=message, 
+                callback=callback, 
+                context="global_middleware"
+            )
             
-            # НЕ прерываем работу бота - просто логируем ошибку и продолжаем
-            # return None позволяет боту продолжить работу
+            # НЕ прерываем работу бота - просто обрабатываем ошибку и продолжаем
             return None

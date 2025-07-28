@@ -1,15 +1,13 @@
-﻿"""Обработка документов → загрузка в OpenAI → анализ через Responses API."""
+"""Обработка документов → загрузка в OpenAI → анализ через Responses API."""
 from aiogram import Router
 from aiogram.types import Message, Document
 import asyncio
 from bot.config import settings
 from bot.utils.openai_client import OpenAIClient
 from bot.utils.http_client import download_file
-from bot.utils.log import logger
 from bot.utils.progress import show_progress_indicator
 from bot.utils.html import send_long_html_message
-import openai
-import aiohttp
+from bot.utils.errors import error_handler
 
 router = Router()
 
@@ -19,10 +17,12 @@ SUPPORTED_DOCUMENT_TYPES = {
 }
 
 @router.message(lambda m: m.document)
+@error_handler("document_handler")
 async def handle_document(msg: Message):
     """Обрабатывает загруженные документы через OpenAI Files API с явной индикацией загрузки и анализа."""
     upload_task = None
     analyze_task = None
+    
     try:
         doc: Document = msg.document
 
@@ -47,7 +47,6 @@ async def handle_document(msg: Message):
             )
             return
 
-        file_type = SUPPORTED_DOCUMENT_TYPES.get(mime_type, f"📄 файл .{file_extension}")
         caption = msg.caption or "Проанализируй этот документ"
 
         # Получаем URL файла
@@ -58,17 +57,13 @@ async def handle_document(msg: Message):
         upload_task = asyncio.create_task(
             show_progress_indicator(msg.bot, msg.chat.id, max_time=120, message="📥 Загружаю документ")
         )
-        try:
-            # Загружаем файл из Telegram
-            data = await download_file(file_url)
+        
+        # Загружаем файл из Telegram
+        data = await download_file(file_url)
 
-            # Загружаем PDF-файл в OpenAI с purpose="user_data"
-            file_id = await OpenAIClient.upload_file(data, doc.file_name, "user_data", chat_id=msg.chat.id)
-        except Exception as e:
-            if upload_task and not upload_task.done():
-                upload_task.cancel()
-            await msg.answer(f"❌ Ошибка загрузки файла: {e}")
-            return
+        # Загружаем PDF-файл в OpenAI с purpose="user_data"
+        file_id = await OpenAIClient.upload_file(data, doc.file_name, "user_data", chat_id=msg.chat.id)
+        
         if upload_task and not upload_task.done():
             upload_task.cancel()
 
@@ -89,29 +84,17 @@ async def handle_document(msg: Message):
             }
         ]
 
-        try:
-            response_text = await OpenAIClient.responses_request(msg.chat.id, content)
-        except Exception as e:
-            if analyze_task and not analyze_task.done():
-                analyze_task.cancel()
-            await msg.answer(f"❌ Ошибка анализа документа: {e}")
-            return
-        if analyze_task and not analyze_task.done():
-            analyze_task.cancel()
-
+        response_text = await OpenAIClient.responses_request(msg.chat.id, content)
+        
         # Отправляем результат с HTML форматированием
         result_text = f"📄 <b>Анализ файла {doc.file_name}:</b>\n\n{response_text}"
         
         # Используем новую функцию для отправки длинных HTML сообщений
         await send_long_html_message(msg, result_text)
 
-    except Exception as e:
+    finally:
+        # Гарантированно отменяем все задачи
         if upload_task and not upload_task.done():
             upload_task.cancel()
         if analyze_task and not analyze_task.done():
             analyze_task.cancel()
-        logger.error(f"Ошибка при обработке документа: {e}", exc_info=True)
-        try:
-            await msg.answer("❌ Произошла непредвиденная ошибка при обработке документа.")
-        except Exception:
-            pass

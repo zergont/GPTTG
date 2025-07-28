@@ -1,4 +1,4 @@
-﻿"""Командные хендлеры: /start, /help, /img, /reset, /stats, /stat, /models, /setmodel."""
+"""Командные хендлеры: /start, /help, /img, /reset, /stats, /stat, /models, /setmodel."""
 from __future__ import annotations
 
 from aiogram import Router, F
@@ -17,6 +17,7 @@ from bot.utils.openai_client import OpenAIClient
 from bot.utils.db import get_conn, get_user_display_name
 from bot.utils.progress import show_progress_indicator
 from bot.utils.html import send_long_html_message
+from bot.utils.errors import error_handler
 
 router = Router()
 
@@ -59,6 +60,7 @@ async def cmd_help(msg: Message):
         "/start — приветствие и информация о боте",
         "/help — эта справка",
         "/img &lt;промпт&gt; — сгенерировать картинку",
+        "/cancel — отменить текущую операцию",
         "/reset — очистить историю контекста",
         "/stats — показать личные расходы",
     ]
@@ -171,85 +173,76 @@ async def cmd_status(msg: Message):
 
 # ——— /models (админ) —————————————————————————————————————————— #
 @router.message(F.text == "/models")
+@error_handler("models_command")
 async def cmd_models(msg: Message):
     """Показывает доступные модели (только для админа)."""
     if msg.from_user.id != settings.admin_id:
         return
 
-    try:
-        current_model = await OpenAIClient.get_current_model()
-        models = await OpenAIClient.get_available_models()
+    current_model = await OpenAIClient.get_current_model()
+    models = await OpenAIClient.get_available_models()
+    
+    models_text = f"🤖 <b>Доступные модели:</b>\n\n"
+    models_text += f"🔸 <b>Текущая модель:</b> <code>{current_model}</code>\n\n"
+    
+    for model in models[:10]:  # Показываем первые 10 моделей
+        status = "✅" if model['id'] == current_model else "⚪"
+        models_text += f"{status} <code>{model['id']}</code>\n"
+    
+    models_text += f"\nИспользуйте /setmodel для смены модели"
+    
+    await send_long_html_message(msg, models_text)
         
-        models_text = f"🤖 <b>Доступные модели:</b>\n\n"
-        models_text += f"🔸 <b>Текущая модель:</b> <code>{current_model}</code>\n\n"
-        
-        for model in models[:10]:  # Показываем первые 10 моделей
-            status = "✅" if model['id'] == current_model else "⚪"
-            models_text += f"{status} <code>{model['id']}</code>\n"
-        
-        models_text += f"\nИспользуйте /setmodel для смены модели"
-        
-        await send_long_html_message(msg, models_text)
-        
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка получения списка моделей: {e}")
-
 
 # ——— /setmodel (админ) —————————————————————————————————————————— #
 @router.message(F.text == "/setmodel")
+@error_handler("setmodel_command")
 async def cmd_setmodel(msg: Message):
     """Показывает inline клавиатуру для выбора модели (только для админа)."""
     if msg.from_user.id != settings.admin_id:
         return
 
-    try:
-        current_model = await OpenAIClient.get_current_model()
-        models = await OpenAIClient.get_available_models()
-        
-        # Создаем inline клавиатуру
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[])
-        
-        for model in models[:8]:  # Ограничиваем до 8 моделей
-            status = "✅ " if model['id'] == current_model else ""
-            keyboard.inline_keyboard.append([
-                InlineKeyboardButton(
-                    text=f"{status}{model['id']}",
-                    callback_data=f"setmodel:{model['id']}"
-                )
-            ])
-        
-        await msg.answer(
-            f"🤖 <b>Выберите модель:</b>\n\nТекущая: <code>{current_model}</code>",
-            reply_markup=keyboard
-        )
-        
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка загрузки моделей: {e}")
+    current_model = await OpenAIClient.get_current_model()
+    models = await OpenAIClient.get_available_models()
+    
+    # Создаем inline клавиатуру
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    
+    for model in models[:8]:  # Ограничиваем до 8 моделей
+        status = "✅ " if model['id'] == current_model else ""
+        keyboard.inline_keyboard.append([
+            InlineKeyboardButton(
+                text=f"{status}{model['id']}",
+                callback_data=f"setmodel:{model['id']}"
+            )
+        ])
+    
+    await msg.answer(
+        f"🤖 <b>Выберите модель:</b>\n\nТекущая: <code>{current_model}</code>",
+        reply_markup=keyboard
+    )
 
 
 # ——— Callback для смены модели —————————————————————————————————————————— #
 @router.callback_query(F.data.startswith("setmodel:"))
+@error_handler("setmodel_callback")
 async def callback_setmodel(callback: CallbackQuery):
     """Обрабатывает выбор модели через inline кнопку."""
     if callback.from_user.id != settings.admin_id:
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
 
-    try:
-        model_id = callback.data.split(":", 1)[1]
-        
-        # Устанавливаем новую модель
-        await OpenAIClient.set_current_model(model_id)
-        
-        await callback.message.edit_text(
-            f"✅ <b>Модель изменена!</b>\n\nТекущая модель: <code>{model_id}</code>\n\n"
-            f"Все новые запросы будут использовать эту модель."
-        )
-        
-        await callback.answer("✅ Модель успешно изменена!")
-        
-    except Exception as e:
-        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+    model_id = callback.data.split(":", 1)[1]
+    
+    # Устанавливаем новую модель
+    await OpenAIClient.set_current_model(model_id)
+    
+    await callback.message.edit_text(
+        f"✅ <b>Модель изменена!</b>\n\nТекущая модель: <code>{model_id}</code>\n\n"
+        f"Все новые запросы будут использовать эту модель."
+    )
+    
+    await callback.answer("✅ Модель успешно изменена!")
 
 
 # ——— /reset —————————————————————————————————————————————— #
@@ -355,7 +348,9 @@ async def cmd_stat(msg: Message):
 async def cmd_img(msg: Message, state: FSMContext):
     """Запрашиваем у пользователя описание для генерации картинки."""
     await msg.answer(
-        "Опишите, что нарисовать (например: 'Кот в космосе', 'Горы на закате', ...)",
+        "🎨 <b>Генерация изображения</b>\n\n"
+        "Опишите, что нарисовать (например: 'Кот в космосе', 'Горы на закате', ...).\n\n"
+        "💡 Для отмены отправьте: <code>/cancel</code> или <code>отмена</code>",
         reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(ImgGenStates.waiting_for_prompt)
@@ -364,11 +359,19 @@ async def cmd_img(msg: Message, state: FSMContext):
 @router.message(ImgGenStates.waiting_for_prompt)
 async def imggen_get_prompt(msg: Message, state: FSMContext):
     """Получаем промпт, спрашиваем формат."""
+    # Проверяем команды отмены
+    if msg.text and msg.text.lower() in ['/cancel', '/отмена', 'отмена', 'cancel']:
+        await msg.answer("❌ Генерация изображения отменена.", 
+                        reply_markup=main_kb(msg.from_user.id == settings.admin_id))
+        await state.clear()
+        return
+    
     await state.update_data(prompt=msg.text)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Вертикальный (1024x1792)", callback_data="img_fmt_vert")],
             [InlineKeyboardButton(text="Горизонтальный (1792x1024)", callback_data="img_fmt_horiz")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="img_cancel")]
         ]
     )
     await msg.answer("Выберите формат изображения:", reply_markup=kb)
@@ -376,8 +379,16 @@ async def imggen_get_prompt(msg: Message, state: FSMContext):
 
 
 @router.callback_query(ImgGenStates.waiting_for_format)
+@error_handler("img_generation")
 async def imggen_get_format(callback: CallbackQuery, state: FSMContext):
     """Получаем формат, генерируем картинку."""
+    # Проверяем, если пользователь нажал отмену
+    if callback.data == "img_cancel":
+        await callback.answer("❌ Генерация изображения отменена")
+        await callback.message.edit_text("❌ Генерация изображения отменена.")
+        await state.clear()
+        return
+    
     data = await state.get_data()
     prompt = data.get("prompt") or "Смешной кот"
     if callback.data == "img_fmt_vert":
@@ -395,9 +406,30 @@ async def imggen_get_format(callback: CallbackQuery, state: FSMContext):
         if not url:
             raise ValueError("Не удалось получить изображение.")
         await callback.message.answer_photo(url, caption=f"🖼 {prompt}")
-    except Exception as e:
-        await callback.message.answer(f"❌ Ошибка генерации изображения: {e}")
     finally:
         if progress_task and not progress_task.done():
             progress_task.cancel()
     await state.clear()
+
+
+# ——— /cancel (глобальная отмена) —————————————————————————————————————————— #
+@router.message(F.text.in_(["/cancel", "/отмена"]))
+async def cmd_cancel(msg: Message, state: FSMContext):
+    """Универсальная команда отмены для любого состояния FSM."""
+    current_state = await state.get_state()
+    
+    if current_state is None:
+        await msg.answer("❌ Нет активных операций для отмены.", 
+                        reply_markup=main_kb(msg.from_user.id == settings.admin_id))
+        return
+    
+    await state.clear()
+    
+    # Определяем, какая операция была отменена
+    if current_state in ["ImgGenStates:waiting_for_prompt", "ImgGenStates:waiting_for_format"]:
+        operation = "генерация изображения"
+    else:
+        operation = "текущая операция"
+    
+    await msg.answer(f"❌ {operation.capitalize()} отменена.", 
+                    reply_markup=main_kb(msg.from_user.id == settings.admin_id))

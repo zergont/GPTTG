@@ -295,12 +295,21 @@ GPTTG/
 │   │   ├── text.py              # текстовые сообщения с прогресс-индикатором
 │   │   └── voice.py             # голосовые сообщения (Whisper)
 │   ├── utils/
+│   │   ├── openai/              # 🆕 модульный OpenAI клиент
+│   │   │   ├── __init__.py      # основной экспорт OpenAIClient
+│   │   │   ├── base.py          # базовые настройки клиента
+│   │   │   ├── chat.py          # Responses API для чата
+│   │   │   ├── files.py         # управление файлами
+│   │   │   ├── models.py        # управление моделями
+│   │   │   ├── dalle.py         # генерация изображений
+│   │   │   └── whisper.py       # распознавание речи
 │   │   ├── __init__.py          # инициализация утилит
 │   │   ├── db.py                # работа с SQLite базой данных
 │   │   ├── http_client.py       # HTTP клиент для загрузки файлов
 │   │   ├── log.py               # настройка логирования
-│   │   ├── markdown.py          # экранирование для MarkdownV2
-│   │   ├── openai_client.py     # обёртка для OpenAI SDK с Responses API
+│   │   ├── html.py              # 🆕 HTML форматирование для Telegram
+│   │   ├── markdown.py          # 📝 устарело, оставлено для совместимости
+│   │   ├── openai_client.py     # 📝 устарело, переэкспорт из openai/
 │   │   ├── progress.py          # индикаторы прогресса обработки
 │   │   └── single_instance.py   # проверка единственного экземпляра
 │   ├── __init__.py              # экспорт основного router
@@ -318,7 +327,6 @@ GPTTG/
 ├── gpttg-bot.service            # systemd сервис для продакшена
 └── README.md                    # этот файл
 ```
-
 </details>
 
 ---
