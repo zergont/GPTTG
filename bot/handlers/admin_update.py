@@ -78,6 +78,7 @@ async def callback_update_confirm(callback: types.CallbackQuery):
     await callback.answer()
     await callback.message.edit_text("⚙️ Запускаю процесс обновления...")
     
+    # Обработка ошибок для блока запуска подпроцесса
     try:
         # Определяем путь к скрипту относительно проекта
         project_root = Path(__file__).parent.parent.parent
@@ -88,40 +89,39 @@ async def callback_update_confirm(callback: types.CallbackQuery):
             await callback.message.edit_text("❌ Скрипт обновления не найден")
             return
         
-        # Запускаем скрипт обновления
-        proc = await asyncio.create_subprocess_exec(
-            "sudo", "bash", "-c", f"chmod +x {update_script} && {update_script} --no-restart",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            cwd=str(project_root)
-        )
-        
-        stdout, _ = await proc.communicate()
-        
-        # Обрабатываем результат
-        if proc.returncode == 0:
-            # Показываем последние 1500 символов вывода
-            output = stdout.decode(errors="ignore")
-            snippet = output[-1500:] if output else "(вывод пуст)"
-            
-            await callback.message.edit_text(
-                f"✅ <b>Обновление завершено успешно!</b>\n\n"
-                f"<pre>{snippet}</pre>",
-                parse_mode="HTML"
+        try:
+            # Запускаем скрипт обновления
+            proc = await asyncio.create_subprocess_exec(
+                "sudo", "bash", "-c", f"chmod +x {update_script} && {update_script} --no-restart",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=str(project_root)
             )
-            logger.info("Ручное обновление через /update завершено успешно")
-        else:
-            # Показываем ошибку
-            error_output = stdout.decode(errors="ignore")
-            error_snippet = error_output[-1000:] if error_output else "Неизвестная ошибка"
-            
-            await callback.message.edit_text(
-                f"❌ <b>Ошибка обновления:</b>\n\n"
-                f"<pre>{error_snippet}</pre>",
-                parse_mode="HTML"
-            )
-            logger.error(f"Ошибка ручного обновления: {proc.returncode}")
-            
+            stdout, _ = await proc.communicate()
+            # Обрабатываем результат
+            if proc.returncode == 0:
+                # Показываем последние 1500 символов вывода
+                output = stdout.decode(errors="ignore")
+                snippet = output[-1500:] if output else "(вывод пуст)"
+                await callback.message.edit_text(
+                    f"✅ <b>Обновление завершено успешно!</b>\n\n"
+                    f"<pre>{snippet}</pre>",
+                    parse_mode="HTML"
+                )
+                logger.info("Ручное обновление через /update завершено успешно")
+            else:
+                # Показываем ошибку
+                error_output = stdout.decode(errors="ignore")
+                error_snippet = error_output[-1000:] if error_output else "Неизвестная ошибка"
+                await callback.message.edit_text(
+                    f"❌ <b>Ошибка обновления:</b>\n\n"
+                    f"<pre>{error_snippet}</pre>",
+                    parse_mode="HTML"
+                )
+                logger.error(f"Ошибка ручного обновления: {proc.returncode}")
+        except Exception as e:
+            await callback.message.edit_text(f"❌ Ошибка запуска скрипта обновления: {str(e)[:200]}")
+            logger.error(f"Ошибка запуска подпроцесса обновления: {e}")
     except Exception as e:
         await callback.message.edit_text(f"❌ Критическая ошибка обновления: {str(e)[:200]}")
         logger.error(f"Критическая ошибка при ручном обновлении: {e}")
