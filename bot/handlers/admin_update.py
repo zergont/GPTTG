@@ -90,8 +90,7 @@ async def callback_update_confirm(callback: types.CallbackQuery):
         
         # Запускаем скрипт обновления
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "bash", "-c", "chmod +x", str(update_script), "&&", str(update_script), "--no-restart",
-            ### "sudo", "bash", str(update_script), "--no-restart", -СТАРАЯ СТРОКА, УБРАТЬ!
+            "sudo", "bash", "-c", f"chmod +x {update_script} && {update_script} --no-restart",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(project_root)
