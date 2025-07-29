@@ -46,6 +46,13 @@ async def main():
     dp.include_router(router)  # Главный роутер из bot/__init__.py
     dp.include_router(admin_update.router)    # ← регистрация
     
+    # Проверяем совместимость модели при запуске
+    try:
+        from bot.utils.openai.models import ModelsManager
+        await ModelsManager.ensure_compatible_model()
+    except Exception as e:
+        logger.warning(f"Не удалось проверить совместимость модели: {e}")
+    
     logger.info(f"🚀 Запуск GPTTG бота версии {VERSION}")
     
     try:

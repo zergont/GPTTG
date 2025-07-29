@@ -35,6 +35,7 @@ class ChatManager:
             logger.info("Запрос в OpenAI (chat=%s, prev=%s)", 
                        chat_id, previous_response_id)
             
+            # Используем текущую модель (все доступные модели поддерживают vision+Responses API)
             current_model = await ModelsManager.get_current_model()
             
             if previous_response_id is None:
@@ -79,40 +80,23 @@ class ChatManager:
                 logger.error("OpenAI: превышен лимит запросов")
                 await asyncio.sleep(1)
                 raise
-            except openai.NotFoundError as e:
-                # Обрабатываем 404 ошибку - скорее всего файл или response_id устарел
+            except (openai.PermissionDeniedError, openai.BadRequestError) as e:
                 error_message = str(e)
-                if "Files" in error_message and "were not found" in error_message:
-                    logger.warning(f"OpenAI файлы не найдены для чата {chat_id}: {error_message}")
-                    logger.info("Очищаем историю чата и файлы, повторяем запрос без previous_response_id")
-                    
-                    # Очищаем историю чата и файлы
-                    await FilesManager.delete_files_by_chat(chat_id)
-                    async with get_conn() as db:
-                        await db.execute(
-                            "DELETE FROM chat_history WHERE chat_id = ?",
-                            (chat_id,)
-                        )
-                        await db.commit()
-                    
-                    # Повторяем запрос без previous_response_id (как новая сессия)
-                    request_params_clean = {
-                        "model": current_model,
-                        "input": [
-                            {
-                                "type": "message",
-                                "content": settings.system_prompt,
-                                "role": "system"
-                            }
-                        ] + user_content,
-                        "store": True
-                    }
-                    
-                    logger.info("Повторный запрос без previous_response_id")
-                    response = await client.responses.create(**request_params_clean)
+                logger.warning(f"Проблема с моделью {current_model}: {error_message}")
+                
+                # Возвращаемся к безопасной модели и НЕ повторяем запрос
+                # Просто возвращаем ошибку пользователю
+                await ModelsManager.set_current_model("gpt-4o-mini")
+                
+                # Формируем понятное сообщение для пользователя
+                if "does not have access" in error_message:
+                    return f"❌ Нет доступа к модели {current_model}. Модель изменена на gpt-4o-mini. Повторите запрос."
+                elif "not supported with the Responses API" in error_message:
+                    return f"❌ Модель {current_model} не поддерживает Responses API. Модель изменена на gpt-4o-mini. Повторите запрос."
+                elif "does not support image inputs" in error_message:
+                    return f"❌ Модель {current_model} не поддерживает изображения. Модель изменена на gpt-4o-mini. Повторите запрос."
                 else:
-                    logger.error(f"OpenAI NotFound error: {e}")
-                    raise
+                    return f"❌ Проблема с моделью {current_model}. Модель изменена на gpt-4o-mini. Повторите запрос."
             except Exception as e:
                 logger.error(f"OpenAI:unexpected error: {e}")
                 raise

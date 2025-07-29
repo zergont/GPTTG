@@ -23,18 +23,6 @@ class ErrorType:
     OPENAI_NOT_FOUND = ("🔍 Данные не найдены. История чата сброшена.", 
                         "OpenAI resource not found")
     
-    # Файловые ошибки
-    FILE_TOO_LARGE = ("📁 Файл слишком большой. Максимальный размер: {} МБ", 
-                      "File too large")
-    FILE_UNSUPPORTED = ("📄 Неподдерживаемый тип файла. Поддерживаются: PDF, изображения", 
-                        "Unsupported file type")
-    FILE_DOWNLOAD_ERROR = ("📥 Ошибка загрузки файла. Попробуйте ещё раз.", 
-                           "File download error")
-    
-    # Сетевые ошибки
-    NETWORK_ERROR = ("🌐 Проблемы с сетью. Проверьте подключение и попробуйте позже.", 
-                     "Network connection error")
-    
     # Общие ошибки
     UNKNOWN_ERROR = ("❌ Произошла непредвиденная ошибка. Попробуйте ещё раз.", 
                      "Unknown error occurred")
@@ -56,20 +44,10 @@ class ErrorHandler:
             return ErrorType.OPENAI_RATE_LIMIT
         elif isinstance(exception, openai.AuthenticationError):
             return ErrorType.OPENAI_AUTH
-        elif isinstance(exception, openai.BadRequestError):
+        elif isinstance(exception, (openai.BadRequestError, openai.PermissionDeniedError)):
             return ErrorType.OPENAI_BAD_REQUEST
         elif isinstance(exception, openai.NotFoundError):
             return ErrorType.OPENAI_NOT_FOUND
-        
-        # Сетевые ошибки
-        elif "ClientError" in str(type(exception).__name__) or "aiohttp" in str(type(exception).__module__ or ""):
-            return ErrorType.NETWORK_ERROR
-        
-        # Файловые ошибки (определяются по сообщению)
-        elif "too large" in str(exception).lower() or "большой" in str(exception).lower():
-            return ErrorType.FILE_TOO_LARGE
-        elif "unsupported" in str(exception).lower() or "неподдерживаемый" in str(exception).lower():
-            return ErrorType.FILE_UNSUPPORTED
         
         # Общие ошибки
         else:

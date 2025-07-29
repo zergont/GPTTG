@@ -34,7 +34,7 @@ async def cmd_start(msg: Message):
     welcome_text = (
         f"👋 Привет, {msg.from_user.first_name or 'друг'}!\n\n"
         f"Я — умный ассистент на базе OpenAI Responses API. Умею:\n\n"
-        f"💬 Отвечать на вопросы и поддерживать беседу\n"
+        f"💬 Отвечать на questions и поддерживать беседу\n"
         f"🖼 Анализировать изображения с подписями\n" 
         f"🎤 Распознавать голосовые сообщения\n"
         f"🎨 Генерировать картинки по описанию\n\n"
@@ -73,7 +73,8 @@ async def cmd_help(msg: Message):
             "/models — показать доступные модели",
             "/setmodel — изменить текущую модель",
             "/status — статус системы",
-            "/update — ручное обновление бота"
+            "/update — ручное обновление бота",
+            "/checkmodel — проверить совместимость модели"
         ])
     
     help_text = "\n".join(help_lines)
@@ -182,13 +183,14 @@ async def cmd_models(msg: Message):
     current_model = await OpenAIClient.get_current_model()
     models = await OpenAIClient.get_available_models()
     
-    models_text = f"🤖 <b>Доступные модели:</b>\n\n"
+    models_text = f"🤖 <b>Доступные vision-модели:</b>\n\n"
     models_text += f"🔸 <b>Текущая модель:</b> <code>{current_model}</code>\n\n"
     
-    for model in models[:10]:  # Показываем первые 10 моделей
+    for model in models[:8]:
         status = "✅" if model['id'] == current_model else "⚪"
         models_text += f"{status} <code>{model['id']}</code>\n"
     
+    models_text += f"\n💡 <i>Все модели поддерживают текст и изображения</i>"
     models_text += f"\nИспользуйте /setmodel для смены модели"
     
     await send_long_html_message(msg, models_text)
@@ -433,3 +435,33 @@ async def cmd_cancel(msg: Message, state: FSMContext):
     
     await msg.answer(f"❌ {operation.capitalize()} отменена.", 
                     reply_markup=main_kb(msg.from_user.id == settings.admin_id))
+
+
+# ——— /checkmodel (админ) —————————————————————————————————————————— #
+@router.message(F.text == "/checkmodel")
+@error_handler("checkmodel_command")
+async def cmd_checkmodel(msg: Message):
+    """Проверяет текущую модель (только для админа)."""
+    if msg.from_user.id != settings.admin_id:
+        return
+
+    from bot.utils.openai.models import ModelsManager
+    
+    current_model = await ModelsManager.get_current_model()
+    is_vision = current_model in ModelsManager.VISION_MODELS
+    
+    status_icon = "✅" if is_vision else "❌"
+    status_text = "vision-модель" if is_vision else "не vision-модель"
+    
+    response_text = (
+        f"🔍 <b>Текущая модель:</b> <code>{current_model}</code>\n"
+        f"{status_icon} Статус: <b>{status_text}</b>\n\n"
+        f"<b>Действия:</b>\n"
+        f"• /models — показать доступные модели\n"
+        f"• /setmodel — сменить модель"
+    )
+    
+    if not is_vision:
+        response_text += f"\n\n⚡ <b>Рекомендация:</b> переключитесь на vision-модель"
+    
+    await send_long_html_message(msg, response_text)
