@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # Скрипт для разработчиков - тестирование на локальной машине
 # Кроссплатформенный запуск для Windows и Linux
 
@@ -11,12 +11,10 @@ echo "========================="
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     PLATFORM="windows"
     PYTHON_CMD="python"
-    VENV_ACTIVATE="Scripts\activate"
     POETRY_CMD="poetry"
 else
     PLATFORM="linux"
     PYTHON_CMD="python3"
-    VENV_ACTIVATE="bin/activate"
     POETRY_CMD="poetry"
 fi
 
@@ -35,11 +33,18 @@ echo "🐍 Python версия: $PYTHON_VERSION"
 if ! command -v $POETRY_CMD &> /dev/null; then
     echo "⚠️ Poetry не найден, устанавливаем..."
     if [[ "$PLATFORM" == "windows" ]]; then
-        (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+        # Для Git Bash на Windows используем curl, если доступен
+        if command -v curl &> /dev/null; then
+            curl -sSL https://install.python-poetry.org | $PYTHON_CMD -
+        else
+            echo "💡 Установите Poetry вручную: https://python-poetry.org/docs/#installation"
+            exit 1
+        fi
     else
-        curl -sSL https://install.python-poetry.org | python3 -
+        curl -sSL https://install.python-poetry.org | $PYTHON_CMD -
     fi
     echo "✅ Poetry установлен"
+    echo "💡 Перезапустите терминал для обновления PATH"
 fi
 
 # Создание виртуального окружения

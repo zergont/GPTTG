@@ -111,7 +111,7 @@ nano .env   # или любой редактор
 
 Заполните обязательные поля — `BOT_TOKEN`, `OPENAI_API_KEY`, `ADMIN_ID`.
 
-### Шаг 3. Создайте окружение и установите зависимости
+### Шаг 3. Создайте окружение и установитеDependencies
 
 <details>
 <summary><strong>Способ A — Poetry (рекомендуется)</strong></summary>
@@ -398,6 +398,7 @@ GPTTG/
 │   │   │   └── whisper.py       # распознавание речи
 │   │   ├── __init__.py          # инициализация утилит
 │   │   ├── db.py                # работа с SQLite базой данных
+│   │   ├── errors.py            # централизованная обработка ошибок
 │   │   ├── http_client.py       # HTTP клиент для загрузки файлов
 │   │   ├── log.py               # настройка логирования
 │   │   ├── html.py              # HTML форматирование для Telegram
@@ -417,6 +418,7 @@ GPTTG/
 ├── pyproject.toml               # зависимости Poetry
 ├── requirements.txt             # зависимости pip (альтернатива)
 ├── .env.example                 # пример конфигурации
+├── .gitignore                   # исключения Git
 ├── dev-setup.sh                 # настройка разработки (Linux/macOS)
 ├── dev-setup.ps1                # настройка разработки (Windows)
 ├── update_bot.sh                # скрипт автообновления (Linux)
