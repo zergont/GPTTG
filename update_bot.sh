@@ -46,6 +46,9 @@ trap 'log "❌  Ошибка на строке $LINENO"' ERR
 log "▶️  Запускаю обновление (ветка $TARGET_BRANCH, перезапуск=$RESTART)"
 cd "$REPO_DIR"
 
+log "⚠️  остановка бота"
+    systemctl stop "$SERVICE_NAME"
+
 export POETRY_VIRTUALENVS_IN_PROJECT=true
 export PATH="/root/.local/bin:/usr/local/bin:/usr/bin:$PATH"
 
