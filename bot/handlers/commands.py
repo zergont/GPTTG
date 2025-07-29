@@ -624,4 +624,4 @@ async def cmd_checkmodel(msg: Message):
     if not is_vision:
         response_text += f"\n\n⚡ <b>Рекомендация:</b> переключитесь на vision-модель"
     
-    await send_long_html_message(msg, response_text)    await send_long_html_message(msg, response_text)
+    await send_long_html_message(msg, response_text)

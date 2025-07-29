@@ -1,6 +1,7 @@
-﻿"""Объединение всех роутеров."""
+"""Объединение всех роутеров."""
 from aiogram import Router
 from .commands import router as commands_router
+from .admin_update import router as admin_update_router
 from .text import router as text_router
 from .photo import router as photo_router
 from .voice import router as voice_router
@@ -11,6 +12,7 @@ router = Router()  # вместо main_router = Router()
 
 # Порядок важен: более специфичные хендлеры должны быть выше
 router.include_router(commands_router)
+router.include_router(admin_update_router)
 router.include_router(photo_router)
 router.include_router(voice_router)
 router.include_router(document_router)  # Добавляем обработчик документов

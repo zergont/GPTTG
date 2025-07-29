@@ -10,7 +10,6 @@ from bot.middlewares import StartupMiddleware, UserMiddleware, ErrorMiddleware
 from bot import router
 from bot.utils.log import logger
 from bot.utils.http_client import close_session
-from bot.handlers import admin_update  # ← восстанавливаем импорт
 
 
 def ensure_single_instance_safe():
@@ -42,9 +41,8 @@ async def main():
     dp.callback_query.middleware(StartupMiddleware())
     dp.callback_query.middleware(ErrorMiddleware())
     
-    # Регистрируем роутеры
-    dp.include_router(router)  # Главный роутер из bot/__init__.py
-    dp.include_router(admin_update.router)  # ← восстанавливаем регистрацию
+    # Регистрируем главный роутер (который уже включает все остальные роутеры)
+    dp.include_router(router)  # Главный роутер из bot/__init__.py уже содержит admin_update
     
     logger.info(f"🚀 Запуск GPTTG бота версии {VERSION}")
     
