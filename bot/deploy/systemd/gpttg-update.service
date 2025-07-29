@@ -1,16 +1,14 @@
 [Unit]
-Description=GPTTG updater — запускает update_bot.sh
+Description=GPTTG Bot Update Service
 After=network.target
 
 [Service]
 Type=oneshot
 User=root
 WorkingDirectory=/root/GPTTG
+ExecStart=/root/GPTTG/update_bot.sh
+StandardOutput=journal
+StandardError=journal
 
-# ⬇️  ВСЕГДА выдаём +x, даже если атрибут сбит после git pull
-ExecStartPre=/usr/bin/chmod +x /root/GPTTG/update_bot.sh
-ExecStart=/root/GPTTG/update_bot.sh --no-restart
-
-StandardOutput=append:/var/log/gpttg-update.log
-StandardError=append:/var/log/gpttg-update.log
-Environment=PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
+[Install]
+WantedBy=multi-user.target

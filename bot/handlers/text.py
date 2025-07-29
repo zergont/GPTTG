@@ -3,7 +3,7 @@ import asyncio
 from aiogram import Router, F
 from aiogram.types import Message
 from bot.utils.db import get_conn
-from bot.utils.openai_client import OpenAIClient
+from bot.utils.openai import OpenAIClient
 from bot.utils.progress import show_progress_indicator
 from bot.utils.errors import error_handler
 

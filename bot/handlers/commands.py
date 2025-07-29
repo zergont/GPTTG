@@ -13,7 +13,7 @@ from pathlib import Path
 
 from bot.config import settings, VERSION
 from bot.keyboards import main_kb
-from bot.utils.openai_client import OpenAIClient
+from bot.utils.openai import OpenAIClient
 from bot.utils.db import get_conn, get_user_display_name
 from bot.utils.progress import show_progress_indicator
 from bot.utils.html import send_long_html_message
