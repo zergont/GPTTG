@@ -72,7 +72,7 @@ async def cmd_help(msg: Message):
             "/stat — общая статистика",
             "/models — показать доступные модели",
             "/setmodel — изменить текущую модель",
-            "/status — статус системы",
+            "/status — статус системы и служб",
             "/update — ручное обновление бота",
             "/checkmodel — проверить совместимость модели"
         ])
@@ -126,6 +126,64 @@ async def cmd_status(msg: Message):
     except Exception as e:
         process_count = f"ошибка: {str(e)[:30]}..."
     
+    # Проверяем systemd службы (только для Linux)
+    systemd_services = []
+    if settings.is_linux:
+        services_to_check = [
+            ("gpttg-bot.service", "Основная служба бота"),
+            ("gpttg-update.service", "Служба автообновления"),
+            ("gpttg-update.timer", "Таймер автообновления")
+        ]
+        
+        for service_name, description in services_to_check:
+            try:
+                # Проверяем статус службы
+                result = subprocess.run(
+                    ['systemctl', 'is-active', service_name],
+                    capture_output=True, text=True, timeout=5
+                )
+                
+                if result.returncode == 0:
+                    status = result.stdout.strip()
+                    if status == "active":
+                        icon = "✅"
+                        status_text = "активна"
+                    elif status == "inactive":
+                        icon = "⚫"
+                        status_text = "неактивна"
+                    elif status == "failed":
+                        icon = "❌"
+                        status_text = "сбой"
+                    else:
+                        icon = "⚠️"
+                        status_text = status
+                else:
+                    icon = "❓"
+                    status_text = "не найдена"
+                
+                # Для timer также проверяем enabled статус
+                if service_name.endswith('.timer'):
+                    try:
+                        enabled_result = subprocess.run(
+                            ['systemctl', 'is-enabled', service_name],
+                            capture_output=True, text=True, timeout=3
+                        )
+                        if enabled_result.returncode == 0:
+                            enabled_status = enabled_result.stdout.strip()
+                            if enabled_status == "enabled":
+                                status_text += " (включен)"
+                            else:
+                                status_text += f" ({enabled_status})"
+                    except Exception:
+                        pass
+                
+                systemd_services.append(f"{icon} {service_name}: {status_text}")
+                
+            except subprocess.TimeoutExpired:
+                systemd_services.append(f"⏳ {service_name}: проверка превысила время ожидания")
+            except Exception as e:
+                systemd_services.append(f"❓ {service_name}: ошибка проверки")
+    
     # Проверяем системные файлы
     version_files = []
     
@@ -163,9 +221,16 @@ async def cmd_status(msg: Message):
         f"🖥️ Платформа: <code>{platform_info}</code>\n"
         f"🔒 Блокировка экземпляра: {lock_status}\n"
         f"⚙️ Процессов bot.main: <code>{str(process_count)}</code>\n\n"
-        f"💾 <b>Системные файлы:</b>\n"
     )
     
+    # Добавляем информацию о systemd службах
+    if systemd_services:
+        status_text += f"🔧 <b>Системные службы:</b>\n"
+        for service_info in systemd_services:
+            status_text += f"  {service_info}\n"
+        status_text += "\n"
+    
+    status_text += f"💾 <b>Системные файлы:</b>\n"
     for file_info in version_files:
         status_text += f"  {file_info}\n"
     
