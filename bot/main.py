@@ -10,7 +10,7 @@ from bot.middlewares import StartupMiddleware, UserMiddleware, ErrorMiddleware
 from bot import router
 from bot.utils.log import logger
 from bot.utils.http_client import close_session
-from bot.handlers import admin_update     # ← импорт
+from bot.handlers import admin_update  # ← восстанавливаем импорт
 
 
 def ensure_single_instance_safe():
@@ -44,14 +44,7 @@ async def main():
     
     # Регистрируем роутеры
     dp.include_router(router)  # Главный роутер из bot/__init__.py
-    dp.include_router(admin_update.router)    # ← регистрация
-    
-    # Проверяем совместимость модели при запуске
-    try:
-        from bot.utils.openai.models import ModelsManager
-        await ModelsManager.ensure_compatible_model()
-    except Exception as e:
-        logger.warning(f"Не удалось проверить совместимость модели: {e}")
+    dp.include_router(admin_update.router)  # ← восстанавливаем регистрацию
     
     logger.info(f"🚀 Запуск GPTTG бота версии {VERSION}")
     
