@@ -149,8 +149,13 @@ async def cmd_status(msg: Message):
                         icon = "✅"
                         status_text = "активна"
                     elif status == "inactive":
-                        icon = "⚫"
-                        status_text = "неактивна"
+                        # Для oneshot служб (gpttg-update.service) inactive - это нормально
+                        if service_name == "gpttg-update.service":
+                            icon = "⚫"
+                            status_text = "готова к запуску (oneshot)"
+                        else:
+                            icon = "⚫"
+                            status_text = "неактивна"
                     elif status == "failed":
                         icon = "❌"
                         status_text = "сбой"
@@ -158,10 +163,28 @@ async def cmd_status(msg: Message):
                         icon = "⚠️"
                         status_text = status
                 else:
-                    icon = "❓"
-                    status_text = "не найдена"
+                    # Проверяем существование unit файла
+                    try:
+                        check_result = subprocess.run(
+                            ['systemctl', 'cat', service_name],
+                            capture_output=True, text=True, timeout=3
+                        )
+                        if check_result.returncode == 0:
+                            # Служба найдена, но неактивна
+                            if service_name == "gpttg-update.service":
+                                icon = "⚫"
+                                status_text = "готова к запуску (oneshot, unit найден)"
+                            else:
+                                icon = "⚫"
+                                status_text = "неактивна (unit найден)"
+                        else:
+                            icon = "❓"
+                            status_text = "не найдена (unit отсутствует)"
+                    except Exception:
+                        icon = "❓"
+                        status_text = "не найдена"
                 
-                # Для timer также проверяем enabled статус
+                # Для timer также проверяем enabled статус и последний запуск
                 if service_name.endswith('.timer'):
                     try:
                         enabled_result = subprocess.run(
@@ -174,6 +197,38 @@ async def cmd_status(msg: Message):
                                 status_text += " (включен)"
                             else:
                                 status_text += f" ({enabled_status})"
+                        
+                        # Проверяем информацию о последнем запуске
+                        last_trigger_result = subprocess.run(
+                            ['systemctl', 'show', service_name, '--property=LastTriggerUSec'],
+                            capture_output=True, text=True, timeout=3
+                        )
+                        if last_trigger_result.returncode == 0:
+                            last_trigger = last_trigger_result.stdout.strip()
+                            if "LastTriggerUSec=0" not in last_trigger and "LastTriggerUSec=n/a" not in last_trigger:
+                                # Получаем более читаемую информацию о времени
+                                next_trigger_result = subprocess.run(
+                                    ['systemctl', 'show', service_name, '--property=NextElapseUSecRealtime'],
+                                    capture_output=True, text=True, timeout=3
+                                )
+                                if next_trigger_result.returncode == 0:
+                                    status_text += " (работает)"
+                        
+                    except Exception:
+                        pass
+                
+                # Для update.service проверяем, существует ли unit файл
+                if service_name == "gpttg-update.service" and "не найдена" in status_text:
+                    try:
+                        # Проверяем, есть ли файл в /etc/systemd/system/
+                        file_check = subprocess.run(
+                            ['test', '-f', f'/etc/systemd/system/{service_name}'],
+                            timeout=2
+                        )
+                        if file_check.returncode == 0:
+                            status_text += " (файл существует, нужен daemon-reload?)"
+                        else:
+                            status_text += " (файл не установлен)"
                     except Exception:
                         pass
                 
@@ -184,6 +239,39 @@ async def cmd_status(msg: Message):
             except Exception as e:
                 systemd_services.append(f"❓ {service_name}: ошибка проверки")
     
+        # Добавляем дополнительную информацию о таймере автообновления
+        if any("gpttg-update.timer" in service for service in systemd_services):
+            try:
+                # Получаем информацию о следующем запуске
+                next_run_result = subprocess.run(
+                    ['systemctl', 'list-timers', '--no-legend', 'gpttg-update.timer'],
+                    capture_output=True, text=True, timeout=5
+                )
+                if next_run_result.returncode == 0 and next_run_result.stdout.strip():
+                    timer_info = next_run_result.stdout.strip().split()
+                    if len(timer_info) >= 2:
+                        next_run = " ".join(timer_info[:2])  # Берем дату и время
+                        systemd_services.append(f"📅 Следующий запуск автообновления: {next_run}")
+                        
+                # Проверяем логи последнего запуска службы автообновления
+                last_update_result = subprocess.run(
+                    ['journalctl', '-u', 'gpttg-update.service', '--no-pager', '-n', '1', '--output=short-iso'],
+                    capture_output=True, text=True, timeout=5
+                )
+                if last_update_result.returncode == 0 and last_update_result.stdout.strip():
+                    lines = last_update_result.stdout.strip().split('\n')
+                    if lines:
+                        last_line = lines[-1]
+                        if last_line:
+                            # Извлекаем дату из лога
+                            parts = last_line.split()
+                            if len(parts) >= 2:
+                                last_run_date = f"{parts[0]} {parts[1][:8]}"  # Дата и время без миллисекунд
+                                systemd_services.append(f"📊 Последний запуск автообновления: {last_run_date}")
+                            
+            except Exception:
+                pass
+                
     # Проверяем системные файлы
     version_files = []
     
@@ -228,6 +316,13 @@ async def cmd_status(msg: Message):
         status_text += f"🔧 <b>Системные службы:</b>\n"
         for service_info in systemd_services:
             status_text += f"  {service_info}\n"
+        
+        # Проверяем, есть ли проблемы с службами, и добавляем рекомендации
+        if any("не найдена" in service and "gpttg-update.service" in service and "unit отсутствует" in service for service in systemd_services):
+            status_text += "\n💡 <b>Рекомендация:</b> Служба автообновления не установлена.\n"
+            status_text += "Для установки выполните:\n"
+            status_text += "<code>sudo bot/deploy/install.sh</code>\n"
+        
         status_text += "\n"
     
     status_text += f"💾 <b>Системные файлы:</b>\n"
