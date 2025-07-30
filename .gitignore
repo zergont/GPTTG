@@ -369,3 +369,5 @@ FodyWeavers.xsd
 /Bot_2.sln
 /last_version.txt
 /last_version.txt
+*.sqlite-shm
+*.sqlite-wal
