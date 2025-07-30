@@ -28,7 +28,7 @@ def ensure_single_instance_safe():
 async def main():
     """Основная функция запуска бота."""
     # Инициализация БД только один раз при старте
-    from bot.utils.db import init_db
+    from bot.utils.db import init_db, close_pool
     await init_db()
 
     bot = Bot(
@@ -54,6 +54,7 @@ async def main():
         await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
     finally:
         await close_session()
+        await close_pool()
         await bot.session.close()
 
 

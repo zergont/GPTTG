@@ -5,6 +5,9 @@ from contextlib import asynccontextmanager
 import logging
 from aiogram.types import User
 import asyncio
+_schema_applied = False
+_schema_lock = asyncio.Lock()
+
 
 DB_PATH = Path(__file__).with_suffix(".db").parent.parent / "bot.sqlite"
 logger = logging.getLogger(__name__)
@@ -39,24 +42,28 @@ async def get_conn():
                 await db.close()
 
 
+
 async def init_db():
-    """Выполняет schema.sql при первом запуске."""
-    try:
-        schema_path = Path(__file__).parent.parent.parent / "schema.sql"
-        if not schema_path.exists():
-            raise FileNotFoundError(f"Schema file not found: {schema_path}")
-
-        # Читаем файл в utf-8-sig чтобы корректо обработать BOM
-        sql_script = schema_path.read_text(encoding="utf-8-sig")
-
-        async with get_conn() as db:
-            await db.executescript(sql_script)
-            await db.commit()
-    except Exception as e:
-        logger.error(f"Ошибка инициализации БД: {e}")
-        raise
-
-
+    """Применяет schema.sql ровно один раз, потокобезопасно."""
+    global _schema_applied
+    if _schema_applied:
+        return
+    async with _schema_lock:
+        if _schema_applied:
+            return
+        try:
+            schema_path = Path(__file__).parent.parent.parent / "schema.sql"
+            if not schema_path.exists():
+                raise FileNotFoundError(f"Schema file not found: {schema_path}")
+            sql_script = schema_path.read_text(encoding="utf-8-sig")
+            async with get_conn() as db:
+                await db.executescript(sql_script)
+                await db.commit()
+            _schema_applied = True
+            logger.debug("↪️  Schema applied")
+        except Exception as e:
+            logger.error(f"Ошибка инициализации БД: {e}")
+            raise
 async def save_user(user: User) -> bool:
     """Сохраняет информацию о пользователе. Возвращает True, если пользователь новый."""
     async with get_conn() as db:
@@ -149,3 +156,10 @@ async def delete_openai_file_ids_by_chat(chat_id: int):
             (chat_id,),
         )
         await db.commit()
+
+async def close_pool():
+    """Закрывает все соединения в пуле (вызывать при завершении приложения)."""
+    async with _pool_lock:
+        while _connection_pool:
+            db = _connection_pool.pop()
+            await db.close()
