@@ -606,13 +606,16 @@ async def cmd_checkmodel(msg: Message):
         return
 
     from bot.utils.openai.models import ModelsManager
-    
+
     current_model = await ModelsManager.get_current_model()
-    is_vision = current_model in ModelsManager.VISION_MODELS
-    
-    status_icon = "✅" if is_vision else "❌"
-    status_text = "vision-модель" if is_vision else "не vision-модель"
-    
+    models = await ModelsManager.get_available_models()
+    available_ids = {m['id'] for m in models}
+
+    is_available = current_model in available_ids
+
+    status_icon = "✅" if is_available else "❌"
+    status_text = "модель доступна" if is_available else "модель не найдена среди доступных"
+
     response_text = (
         f"🔍 <b>Текущая модель:</b> <code>{current_model}</code>\n"
         f"{status_icon} Статус: <b>{status_text}</b>\n\n"
@@ -620,8 +623,8 @@ async def cmd_checkmodel(msg: Message):
         f"• /models — показать доступные модели\n"
         f"• /setmodel — сменить модель"
     )
-    
-    if not is_vision:
-        response_text += f"\n\n⚡ <b>Рекомендация:</b> переключитесь на vision-модель"
-    
+
+    if not is_available:
+        response_text += f"\n\n⚡ <b>Рекомендация:</b> выберите существующую модель через /setmodel"
+
     await send_long_html_message(msg, response_text)
