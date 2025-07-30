@@ -10,8 +10,7 @@ from bot.config import settings
 
 class StartupMiddleware(BaseMiddleware):
     async def __call__(self, handler, event: TelegramObject, data):
-        # Создаём/инициализируем БД один раз
-        await init_db()
+        # Больше не инициализируем БД здесь!
         return await handler(event, data)
 
 
