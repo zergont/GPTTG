@@ -346,7 +346,7 @@ async def cmd_models(msg: Message):
     models_text = f"🤖 <b>Доступные vision-модели:</b>\n\n"
     models_text += f"🔸 <b>Текущая модель:</b> <code>{current_model}</code>\n\n"
     
-    for model in models[:8]:
+    for model in models:
         status = "✅" if model['id'] == current_model else "⚪"
         models_text += f"{status} <code>{model['id']}</code>\n"
     
@@ -370,7 +370,7 @@ async def cmd_setmodel(msg: Message):
     # Создаем inline клавиатуру
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
     
-    for model in models[:8]:  # Ограничиваем до 8 моделей
+    for model in models:
         status = "✅ " if model['id'] == current_model else ""
         keyboard.inline_keyboard.append([
             InlineKeyboardButton(
