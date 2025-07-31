@@ -343,14 +343,14 @@ async def cmd_models(msg: Message):
     current_model = await OpenAIClient.get_current_model()
     models = await OpenAIClient.get_available_models()
     
-    models_text = f"🤖 <b>Доступные vision-модели:</b>\n\n"
+    models_text = f"🤖 <b>Доступные модели:</b>\n\n"
     models_text += f"🔸 <b>Текущая модель:</b> <code>{current_model}</code>\n\n"
     
     for model in models:
         status = "✅" if model['id'] == current_model else "⚪"
         models_text += f"{status} <code>{model['id']}</code>\n"
     
-    models_text += f"\n💡 <i>Все модели поддерживают текст и изображения</i>"
+    models_text += f"\n💡 <i>Не все модели поддерживают текст и изображения! При выборе несовместимой модели бот переключится на модель gpt-4о-mini</i>"
     models_text += f"\nИспользуйте /setmodel для смены модели"
     
     await send_long_html_message(msg, models_text)
