@@ -133,7 +133,7 @@ async def cmd_status(msg: Message):
                 status_text = "активна"
             elif "Active: inactive" in status_output and "Result: exit-code" not in status_output:
                 icon = "⚫"
-                status_text = "завершена (oneshot)"
+                status_text = "завершена успешно (oneshot)"
             elif "failed" in status_output or "Result: exit-code" in status_output:
                 icon = "❌"
                 status_text = "сбой"
