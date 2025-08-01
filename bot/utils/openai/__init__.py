@@ -45,9 +45,9 @@ class OpenAIClient:
     
     # Чат
     @staticmethod
-    async def responses_request(chat_id: int, user_content, previous_response_id: str | None = None) -> str:
+    async def responses_request(chat_id: int, user_content, previous_response_id: str | None = None, tools: list | None = None) -> str:
         """Отправляет запрос в Responses API."""
-        return await ChatManager.responses_request(chat_id, user_content, previous_response_id)
+        return await ChatManager.responses_request(chat_id, user_content, previous_response_id, tools=tools)
     
     # DALL-E
     @staticmethod

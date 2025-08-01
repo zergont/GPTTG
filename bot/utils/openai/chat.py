@@ -29,8 +29,20 @@ class ChatManager:
         chat_id: int,
         user_content: List[Dict[str, Any]],
         previous_response_id: str | None = None,
+        tools: list | None = None  # Добавлено
     ) -> str:
-        """Вызов Responses API + учёт расхода токенов."""
+        """
+        Отправляет запрос в OpenAI Responses API.
+
+        Args:
+            chat_id: ID чата.
+            user_content: Список сообщений для контекста.
+            previous_response_id: ID предыдущего ответа (для сохранения контекста).
+            tools: Список инструментов (например, web_search_preview).
+
+        Returns:
+            str: Ответ от OpenAI.
+        """
         async with RATE_LIMIT:
             logger.info("Запрос в OpenAI (chat=%s, prev=%s)", 
                        chat_id, previous_response_id)
@@ -64,8 +76,11 @@ class ChatManager:
                 "model": current_model,
                 "input": input_content,
                 "previous_response_id": previous_response_id,
-                "store": True
+                "store": True,
             }
+
+            if tools:
+                request_params["tools"] = tools  # Добавлено
 
             # DEBUG: выводим запрос
             if getattr(settings, "debug_mode", False):

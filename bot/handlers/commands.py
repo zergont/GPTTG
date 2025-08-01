@@ -60,6 +60,7 @@ async def cmd_help(msg: Message):
         "/start — приветствие и информация о боте",
         "/help — эта справка",
         "/img &lt;промпт&gt; — сгенерировать картинку",
+        "/web &lt;запрос&gt; — выполнить веб-поиск",  # Добавлено описание команды
         "/cancel — отменить текущую операцию",
         "/reset — очистить историю контекста",
         "/stats — показать личные расходы",
@@ -628,3 +629,37 @@ async def cmd_checkmodel(msg: Message):
         response_text += f"\n\n⚡ <b>Рекомендация:</b> выберите существующую модель через /setmodel"
 
     await send_long_html_message(msg, response_text)
+
+
+# ——— /web —————————————————————————————————————————————— #
+@router.message(F.text.startswith("/web"))
+@error_handler("web_command")
+async def cmd_web(msg: Message):
+    """Выполняет веб-поиск через OpenAI Responses API."""
+    if msg.from_user.id != settings.admin_id:
+        await msg.answer("❌ У вас нет прав для использования этой команды.")
+        return
+
+    # Извлекаем запрос из команды
+    query = msg.text[len("/web"):].strip()
+    if not query:
+        await msg.answer("❌ Пожалуйста, укажите запрос для веб-поиска. Пример: <code>/web Какая погода в Риме?</code>", parse_mode="HTML")
+        return
+
+    await msg.answer(f"🔍 Выполняю веб-поиск для запроса: <b>{query}</b>", parse_mode="HTML")
+
+    # Формируем запрос к OpenAI Responses API
+    content = [{"type": "message", "role": "user", "content": query}]
+    tools = [{"type": "web_search_preview"}]
+
+    try:
+        # Отправляем запрос в OpenAI API
+        response_text = await OpenAIClient.responses_request(
+            chat_id=msg.chat.id,
+            user_content=content,
+            tools=tools
+        )
+        # Отправляем результат пользователю
+        await msg.answer(f"🌐 <b>Результат веб-поиска:</b>\n\n{response_text}", parse_mode="HTML")
+    except Exception as e:
+        await msg.answer(f"❌ Ошибка при выполнении веб-поиска: {str(e)}")
