@@ -126,20 +126,20 @@ async def cmd_status(msg: Message):
 
     for service_name, description in services_to_check:
         try:
-            result = subprocess.run(['systemctl', 'is-active', service_name], capture_output=True, text=True, timeout=5)
-            status = result.stdout.strip() if result.returncode == 0 else "неизвестно"
-            if status == "active":
+            result = subprocess.run(['systemctl', 'status', service_name], capture_output=True, text=True, timeout=5)
+            status_output = result.stdout.strip() if result.returncode == 0 else result.stderr.strip()
+            if "Active: active" in status_output:
                 icon = "✅"
                 status_text = "активна"
-            elif status == "inactive":
+            elif "Active: inactive" in status_output and "Result: exit-code" not in status_output:
                 icon = "⚫"
-                status_text = "неактивна"
-            elif status == "failed":
+                status_text = "завершена (oneshot)"
+            elif "failed" in status_output or "Result: exit-code" in status_output:
                 icon = "❌"
                 status_text = "сбой"
             else:
                 icon = "⚠️"
-                status_text = status
+                status_text = "неизвестно"
             systemd_services.append(f"{icon} {service_name}: {status_text}")
         except Exception as e:
             systemd_services.append(f"❓ {service_name}: ошибка проверки ({str(e)[:30]})")
