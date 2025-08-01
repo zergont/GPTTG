@@ -89,7 +89,238 @@ async def cmd_status(msg: Message):
     if msg.from_user.id != settings.admin_id:
         return
 
-    import os
+    import subprocess
+
+    # Проверяем статус службы gpttg-update.service
+    service_name = "gpttg-update.service"
+    try:
+        result = subprocess.run(
+            ['systemctl', 'status', service_name],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            status_text = result.stdout
+        else:
+            status_text = result.stderr
+
+        # Анализируем код завершения
+        if "failed" in status_text or "exit-code" in status_text:
+            await msg.answer(
+                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+        else:
+            await msg.answer(
+                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
+        
+    # import os
+    import subprocess
+
+    # Проверяем статус службы gpttg-update.service
+    service_name = "gpttg-update.service"
+    try:
+        result = subprocess.run(
+            ['systemctl', 'status', service_name],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            status_text = result.stdout
+        else:
+            status_text = result.stderr
+
+        # Анализируем код завершения
+        if "failed" in status_text or "exit-code" in status_text:
+            await msg.answer(
+                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+        else:
+            await msg.answer(
+                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
+        
+    # import os
+    import subprocess
+
+    # Проверяем статус службы gpttg-update.service
+    service_name = "gpttg-update.service"
+    try:
+        result = subprocess.run(
+            ['systemctl', 'status', service_name],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            status_text = result.stdout
+        else:
+            status_text = result.stderr
+
+        # Анализируем код завершения
+        if "failed" in status_text or "exit-code" in status_text:
+            await msg.answer(
+                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+        else:
+            await msg.answer(
+                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
+        
+    # import os
+    import subprocess
+
+    # Проверяем статус службы gpttg-update.service
+    service_name = "gpttg-update.service"
+    try:
+        result = subprocess.run(
+            ['systemctl', 'status', service_name],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            status_text = result.stdout
+        else:
+            status_text = result.stderr
+
+        # Анализируем код завершения
+        if "failed" in status_text or "exit-code" in status_text:
+            await msg.answer(
+                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+        else:
+            await msg.answer(
+                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
+        
+    # import os
+    import subprocess
+
+    # Проверяем статус службы gpttg-update.service
+    service_name = "gpttg-update.service"
+    try:
+        result = subprocess.run(
+            ['systemctl', 'status', service_name],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            status_text = result.stdout
+        else:
+            status_text = result.stderr
+
+        # Анализируем код завершения
+        if "failed" in status_text or "exit-code" in status_text:
+            await msg.answer(
+                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+        else:
+            await msg.answer(
+                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
+        
+    # import os
+    import subprocess
+
+    # Проверяем статус службы gpttg-update.service
+    service_name = "gpttg-update.service"
+    try:
+        result = subprocess.run(
+            ['systemctl', 'status', service_name],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            status_text = result.stdout
+        else:
+            status_text = result.stderr
+
+        # Анализируем код завершения
+        if "failed" in status_text or "exit-code" in status_text:
+            await msg.answer(
+                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+        else:
+            await msg.answer(
+                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
+        
+    # import os
+    import subprocess
+
+    # Проверяем статус службы gpttg-update.service
+    service_name = "gpttg-update.service"
+    try:
+        result = subprocess.run(
+            ['systemctl', 'status', service_name],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            status_text = result.stdout
+        else:
+            status_text = result.stderr
+
+        # Анализируем код завершения
+        if "failed" in status_text or "exit-code" in status_text:
+            await msg.answer(
+                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+        else:
+            await msg.answer(
+                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
+        
+    # import os
+    import subprocess
+
+    # Проверяем статус службы gpttg-update.service
+    service_name = "gpttg-update.service"
+    try:
+        result = subprocess.run(
+            ['systemctl', 'status', service_name],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            status_text = result.stdout
+        else:
+            status_text = result.stderr
+
+        # Анализируем код завершения
+        if "failed" in status_text or "exit-code" in status_text:
+            await msg.answer(
+                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+        else:
+            await msg.answer(
+                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
+        
+    # import os
     
     # Определяем базовую директорию проекта
     bot_dir = Path(__file__).parent.parent  # из bot/handlers/ в bot/

@@ -6,7 +6,7 @@ After=network.target
 Type=oneshot
 User=root
 WorkingDirectory=/root/GPTTG
-ExecStart=/root/GPTTG/update_bot.sh
+ExecStart=/bin/bash -c "chmod +x /root/GPTTG/update_bot.sh && /root/GPTTG/update_bot.sh"
 StandardOutput=journal
 StandardError=journal
 
