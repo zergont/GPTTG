@@ -90,424 +90,62 @@ async def cmd_status(msg: Message):
         return
 
     import subprocess
+    from pathlib import Path
 
-    # Проверяем статус службы gpttg-update.service
-    service_name = "gpttg-update.service"
-    try:
-        result = subprocess.run(
-            ['systemctl', 'status', service_name],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            status_text = result.stdout
-        else:
-            status_text = result.stderr
-
-        # Анализируем код завершения
-        if "failed" in status_text or "exit-code" in status_text:
-            await msg.answer(
-                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-        else:
-            await msg.answer(
-                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
-        
-    # import os
-    import subprocess
-
-    # Проверяем статус службы gpttg-update.service
-    service_name = "gpttg-update.service"
-    try:
-        result = subprocess.run(
-            ['systemctl', 'status', service_name],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            status_text = result.stdout
-        else:
-            status_text = result.stderr
-
-        # Анализируем код завершения
-        if "failed" in status_text or "exit-code" in status_text:
-            await msg.answer(
-                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-        else:
-            await msg.answer(
-                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
-        
-    # import os
-    import subprocess
-
-    # Проверяем статус службы gpttg-update.service
-    service_name = "gpttg-update.service"
-    try:
-        result = subprocess.run(
-            ['systemctl', 'status', service_name],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            status_text = result.stdout
-        else:
-            status_text = result.stderr
-
-        # Анализируем код завершения
-        if "failed" in status_text or "exit-code" in status_text:
-            await msg.answer(
-                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-        else:
-            await msg.answer(
-                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
-        
-    # import os
-    import subprocess
-
-    # Проверяем статус службы gpttg-update.service
-    service_name = "gpttg-update.service"
-    try:
-        result = subprocess.run(
-            ['systemctl', 'status', service_name],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            status_text = result.stdout
-        else:
-            status_text = result.stderr
-
-        # Анализируем код завершения
-        if "failed" in status_text or "exit-code" in status_text:
-            await msg.answer(
-                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-        else:
-            await msg.answer(
-                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
-        
-    # import os
-    import subprocess
-
-    # Проверяем статус службы gpttg-update.service
-    service_name = "gpttg-update.service"
-    try:
-        result = subprocess.run(
-            ['systemctl', 'status', service_name],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            status_text = result.stdout
-        else:
-            status_text = result.stderr
-
-        # Анализируем код завершения
-        if "failed" in status_text or "exit-code" in status_text:
-            await msg.answer(
-                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-        else:
-            await msg.answer(
-                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
-        
-    # import os
-    import subprocess
-
-    # Проверяем статус службы gpttg-update.service
-    service_name = "gpttg-update.service"
-    try:
-        result = subprocess.run(
-            ['systemctl', 'status', service_name],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            status_text = result.stdout
-        else:
-            status_text = result.stderr
-
-        # Анализируем код завершения
-        if "failed" in status_text or "exit-code" in status_text:
-            await msg.answer(
-                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-        else:
-            await msg.answer(
-                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
-        
-    # import os
-    import subprocess
-
-    # Проверяем статус службы gpttg-update.service
-    service_name = "gpttg-update.service"
-    try:
-        result = subprocess.run(
-            ['systemctl', 'status', service_name],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            status_text = result.stdout
-        else:
-            status_text = result.stderr
-
-        # Анализируем код завершения
-        if "failed" in status_text or "exit-code" in status_text:
-            await msg.answer(
-                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-        else:
-            await msg.answer(
-                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
-        
-    # import os
-    import subprocess
-
-    # Проверяем статус службы gpttg-update.service
-    service_name = "gpttg-update.service"
-    try:
-        result = subprocess.run(
-            ['systemctl', 'status', service_name],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            status_text = result.stdout
-        else:
-            status_text = result.stderr
-
-        # Анализируем код завершения
-        if "failed" in status_text or "exit-code" in status_text:
-            await msg.answer(
-                f"❌ <b>Служба {service_name} завершилась с ошибкой:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-        else:
-            await msg.answer(
-                f"✅ <b>Служба {service_name} работает корректно:</b>\n\n<pre>{status_text}</pre>",
-                parse_mode="HTML"
-            )
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка при проверке статуса службы: {str(e)}")
-        
-    # import os
-    
     # Определяем базовую директорию проекта
     bot_dir = Path(__file__).parent.parent  # из bot/handlers/ в bot/
     project_root = bot_dir.parent  # из bot/ в корень проекта
-    
+
     # Проверяем файл блокировки
     lock_file = project_root / "gpttg-bot.lock"
     lock_status = "🔒 Активна" if lock_file.exists() else "🔓 Отсутствует"
-    
     if lock_file.exists():
         try:
             with open(lock_file, 'r') as f:
                 lock_pid = f.read().strip()
-            lock_info = f"(PID: {lock_pid})"
-            lock_status += f" {lock_info}"
+            lock_status += f" (PID: {lock_pid})"
         except Exception:
             lock_status += " (данные недоступны)"
-    
+
     # Проверяем количество процессов бота
     process_count = "неизвестно"
     try:
-        import subprocess
-        if settings.is_windows:
-            result = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq python*'], 
-                                  capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                processes = [line for line in result.stdout.split('\n') if 'python' in line.lower()]
-                process_count = len(processes)
-        else:
-            # Linux: используем простой метод
-            result = subprocess.run(['pgrep', '-f', 'bot.main'], 
-                                  capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                process_count = len([p for p in result.stdout.strip().split('\n') if p])
+        result = subprocess.run(['pgrep', '-f', 'bot.main'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            process_count = len(result.stdout.strip().split('\n'))
     except Exception as e:
         process_count = f"ошибка: {str(e)[:30]}..."
-    
-    # Проверяем systemd службы (только для Linux)
+
+    # Проверяем systemd службы
     systemd_services = []
-    if settings.is_linux:
-        services_to_check = [
-            ("gpttg-bot.service", "Основная служба бота"),
-            ("gpttg-update.service", "Служба автообновления"),
-            ("gpttg-update.timer", "Таймер автообновления")
-        ]
-        
-        for service_name, description in services_to_check:
-            try:
-                # Проверяем статус службы
-                result = subprocess.run(
-                    ['systemctl', 'is-active', service_name],
-                    capture_output=True, text=True, timeout=5
-                )
-                
-                if result.returncode == 0:
-                    status = result.stdout.strip()
-                    if status == "active":
-                        icon = "✅"
-                        status_text = "активна"
-                    elif status == "inactive":
-                        # Для oneshot служб (gpttg-update.service) inactive - это нормально
-                        if service_name == "gpttg-update.service":
-                            icon = "⚫"
-                            status_text = "готова к запуску (oneshot)"
-                        else:
-                            icon = "⚫"
-                            status_text = "неактивна"
-                    elif status == "failed":
-                        icon = "❌"
-                        status_text = "сбой"
-                    else:
-                        icon = "⚠️"
-                        status_text = status
-                else:
-                    # Проверяем существование unit файла
-                    try:
-                        check_result = subprocess.run(
-                            ['systemctl', 'cat', service_name],
-                            capture_output=True, text=True, timeout=3
-                        )
-                        if check_result.returncode == 0:
-                            # Служба найдена, но неактивна
-                            if service_name == "gpttg-update.service":
-                                icon = "⚫"
-                                status_text = "готова к запуску (oneshot, unit найден)"
-                            else:
-                                icon = "⚫"
-                                status_text = "неактивна (unit найден)"
-                        else:
-                            icon = "❓"
-                            status_text = "не найдена (unit отсутствует)"
-                    except Exception:
-                        icon = "❓"
-                        status_text = "не найдена"
-                
-                # Для timer также проверяем enabled статус и последний запуск
-                if service_name.endswith('.timer'):
-                    try:
-                        enabled_result = subprocess.run(
-                            ['systemctl', 'is-enabled', service_name],
-                            capture_output=True, text=True, timeout=3
-                        )
-                        if enabled_result.returncode == 0:
-                            enabled_status = enabled_result.stdout.strip()
-                            if enabled_status == "enabled":
-                                status_text += " (включен)"
-                            else:
-                                status_text += f" ({enabled_status})"
-                        
-                        # Проверяем информацию о последнем запуске
-                        last_trigger_result = subprocess.run(
-                            ['systemctl', 'show', service_name, '--property=LastTriggerUSec'],
-                            capture_output=True, text=True, timeout=3
-                        )
-                        if last_trigger_result.returncode == 0:
-                            last_trigger = last_trigger_result.stdout.strip()
-                            if "LastTriggerUSec=0" not in last_trigger and "LastTriggerUSec=n/a" not in last_trigger:
-                                # Получаем более читаемую информацию о времени
-                                next_trigger_result = subprocess.run(
-                                    ['systemctl', 'show', service_name, '--property=NextElapseUSecRealtime'],
-                                    capture_output=True, text=True, timeout=3
-                                )
-                                if next_trigger_result.returncode == 0:
-                                    status_text += " (работает)"
-                        
-                    except Exception:
-                        pass
-                
-                # Для update.service проверяем, существует ли unit файл
-                if service_name == "gpttg-update.service" and "не найдена" in status_text:
-                    try:
-                        # Проверяем, есть ли файл в /etc/systemd/system/
-                        file_check = subprocess.run(
-                            ['test', '-f', f'/etc/systemd/system/{service_name}'],
-                            timeout=2
-                        )
-                        if file_check.returncode == 0:
-                            status_text += " (файл существует, нужен daemon-reload?)"
-                        else:
-                            status_text += " (файл не установлен)"
-                    except Exception:
-                        pass
-                
-                systemd_services.append(f"{icon} {service_name}: {status_text}")
-                
-            except subprocess.TimeoutExpired:
-                systemd_services.append(f"⏳ {service_name}: проверка превысила время ожидания")
-            except Exception as e:
-                systemd_services.append(f"❓ {service_name}: ошибка проверки")
-    
-        # Добавляем дополнительную информацию о таймере автообновления
-        if any("gpttg-update.timer" in service for service in systemd_services):
-            try:
-                # Получаем информацию о следующем запуске
-                next_run_result = subprocess.run(
-                    ['systemctl', 'list-timers', '--no-legend', 'gpttg-update.timer'],
-                    capture_output=True, text=True, timeout=5
-                )
-                if next_run_result.returncode == 0 and next_run_result.stdout.strip():
-                    timer_info = next_run_result.stdout.strip().split()
-                    if len(timer_info) >= 2:
-                        next_run = " ".join(timer_info[:2])  # Берем дату и время
-                        systemd_services.append(f"📅 Следующий запуск автообновления: {next_run}")
-                        
-                # Проверяем логи последнего запуска службы автообновления
-                last_update_result = subprocess.run(
-                    ['journalctl', '-u', 'gpttg-update.service', '--no-pager', '-n', '1', '--output=short-iso'],
-                    capture_output=True, text=True, timeout=5
-                )
-                if last_update_result.returncode == 0 and last_update_result.stdout.strip():
-                    lines = last_update_result.stdout.strip().split('\n')
-                    if lines:
-                        last_line = lines[-1]
-                        if last_line:
-                            # Извлекаем дату из лога
-                            parts = last_line.split()
-                            if len(parts) >= 2:
-                                last_run_date = f"{parts[0]} {parts[1][:8]}"  # Дата и время без миллисекунд
-                                systemd_services.append(f"📊 Последний запуск автообновления: {last_run_date}")
-                            
-            except Exception:
-                pass
-                
+    services_to_check = [
+        ("gpttg-bot.service", "Основная служба бота"),
+        ("gpttg-update.service", "Служба автообновления"),
+        ("gpttg-update.timer", "Таймер автообновления")
+    ]
+
+    for service_name, description in services_to_check:
+        try:
+            result = subprocess.run(['systemctl', 'is-active', service_name], capture_output=True, text=True, timeout=5)
+            status = result.stdout.strip() if result.returncode == 0 else "неизвестно"
+            if status == "active":
+                icon = "✅"
+                status_text = "активна"
+            elif status == "inactive":
+                icon = "⚫"
+                status_text = "неактивна"
+            elif status == "failed":
+                icon = "❌"
+                status_text = "сбой"
+            else:
+                icon = "⚠️"
+                status_text = status
+            systemd_services.append(f"{icon} {service_name}: {status_text}")
+        except Exception as e:
+            systemd_services.append(f"❓ {service_name}: ошибка проверки ({str(e)[:30]})")
+
     # Проверяем системные файлы
     version_files = []
-    
-    # Файлы в корне проекта
     root_files = [".env", "update_bot.sh"]
     for file_name in root_files:
         file_path = project_root / file_name
@@ -519,7 +157,7 @@ async def cmd_status(msg: Message):
                 version_files.append(f"⚠️ {file_name} (ошибка чтения)")
         else:
             version_files.append(f"❌ {file_name} (отсутствует)")
-    
+
     # База данных
     db_file = bot_dir / "bot.sqlite"
     if db_file.exists():
@@ -530,37 +168,29 @@ async def cmd_status(msg: Message):
             version_files.append(f"⚠️ bot.sqlite (ошибка чтения)")
     else:
         version_files.append(f"❌ bot.sqlite (отсутствует)")
-    
-    # Информация о платформе
-    platform_info = f"{settings.platform} ({'dev' if settings.is_development else 'prod'})"
-    
+
     # Формируем статус
     status_text = (
         f"🔧 <b>Статус системы:</b>\n\n"
         f"📋 Версия бота: <code>{VERSION}</code>\n"
-        f"🖥️ Платформа: <code>{platform_info}</code>\n"
+        f"🖥️ Платформа: <code>{settings.platform} ({'dev' if settings.is_development else 'prod'})</code>\n"
         f"🔒 Блокировка экземпляра: {lock_status}\n"
         f"⚙️ Процессов bot.main: <code>{str(process_count)}</code>\n\n"
     )
-    
+
     # Добавляем информацию о systemd службах
     if systemd_services:
         status_text += f"🔧 <b>Системные службы:</b>\n"
         for service_info in systemd_services:
             status_text += f"  {service_info}\n"
-        
-        # Проверяем, есть ли проблемы с службами, и добавляем рекомендации
-        if any("не найдена" in service and "gpttg-update.service" in service and "unit отсутствует" in service for service in systemd_services):
-            status_text += "\n💡 <b>Рекомендация:</b> Служба автообновления не установлена.\n"
-            status_text += "Для установки выполните:\n"
-            status_text += "<code>sudo bot/deploy/install.sh</code>\n"
-        
         status_text += "\n"
-    
+
+    # Добавляем информацию о системных файлах
     status_text += f"💾 <b>Системные файлы:</b>\n"
     for file_info in version_files:
         status_text += f"  {file_info}\n"
-    
+
+    # Отправляем единое сообщение
     await send_long_html_message(msg, status_text)
 
 
