@@ -1,11 +1,9 @@
-﻿"""Конфигурация приложения.
-Все переменные окружения читаются один раз при старте, после чего доступ к
-настройкам осуществляется через `settings`, не трогая `os.environ` напрямую.
-"""
+"""Конфигурация приложения."""
 from dataclasses import dataclass
 import os
 import sys
 import platform
+import re
 from pathlib import Path
 
 # Определяем платформу
@@ -14,28 +12,22 @@ IS_WINDOWS = PLATFORM == 'windows'
 IS_LINUX = PLATFORM == 'linux'
 IS_DEVELOPMENT = os.path.exists('.git') and not os.path.exists('/etc/systemd')
 
-# Функции для чтения версии
-try:
-    import toml
-except ImportError:
-    print("Устанавливается пакет toml для чтения версии...")
-    if IS_WINDOWS:
-        os.system("pip install toml")
-    else:
-        os.system("python3 -m pip install toml")
-    import toml
-
 def get_version_from_pyproject():
+    """Читает версию из pyproject.toml без toml пакета."""
     pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
-    if pyproject_path.exists():
-        data = toml.load(pyproject_path)
-        return data.get("tool", {}).get("poetry", {}).get("version", "unknown")
-    return "unknown"
+    if not pyproject_path.exists():
+        return "unknown"
+    
+    try:
+        content = pyproject_path.read_text(encoding='utf-8')
+        match = re.search(r'version\s*=\s*"([^"]+)"', content)
+        return match.group(1) if match else "unknown"
+    except Exception:
+        return "unknown"
 
 # Получаем версию сразу
 VERSION = get_version_from_pyproject()
 
-# Определяем класс Settings заранее
 @dataclass(frozen=True, slots=True)
 class Settings:
     bot_token: str
@@ -53,7 +45,6 @@ class Settings:
     is_linux: bool
     is_development: bool
 
-# Функция для создания настроек
 def create_settings():
     """Создает объект настроек после проверки всех зависимостей."""
     
@@ -68,7 +59,7 @@ def create_settings():
         "backoff",
         "python_dotenv",
         "aiosqlite",
-        "toml",
+        # "toml",  # Удалено - больше не нужно
     ]
 
     def check_packages():
