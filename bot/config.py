@@ -59,6 +59,7 @@ def create_settings():
         "backoff",
         "python_dotenv",
         "aiosqlite",
+        "pytz",
         # "toml",  # Удалено - больше не нужно
     ]
 
@@ -130,7 +131,7 @@ def create_settings():
         "ADMIN_ID",
     ]
     OPTIONAL_ENV_VARS = [
-        ("SYSTEM_PROMPT", "Ты — полезный ассистент."),
+        ("SYSTEM_PROMPT", "Ты — полезный ассистент. У тебя есть доступ к текущему времени и дате, которые передаются в каждом сообщении пользователя."),
         ("OPENAI_PRICE_PER_1K_TOKENS", "0.002"),
         ("WHISPER_PRICE", "0.006"),
         ("DALLE_PRICE", "0.040"),

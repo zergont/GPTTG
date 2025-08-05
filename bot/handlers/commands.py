@@ -18,6 +18,7 @@ from bot.utils.db import get_conn, get_user_display_name
 from bot.utils.progress import show_progress_indicator
 from bot.utils.html import send_long_html_message
 from bot.utils.errors import error_handler
+from bot.utils.datetime_context import enhance_content_dict_with_datetime
 
 router = Router()
 
@@ -511,6 +512,10 @@ async def cmd_web(msg: Message):
 
     # Формируем запрос к OpenAI Responses API
     content = [{"type": "message", "role": "user", "content": query}]
+    
+    # Добавляем временной контекст
+    content[0] = enhance_content_dict_with_datetime(content[0])
+    
     tools = [{"type": "web_search_preview"}]
 
     try:

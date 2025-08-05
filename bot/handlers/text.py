@@ -6,6 +6,7 @@ from bot.utils.db import get_conn
 from bot.utils.openai import OpenAIClient
 from bot.utils.progress import show_progress_indicator
 from bot.utils.errors import error_handler
+from bot.utils.datetime_context import enhance_content_dict_with_datetime
 
 router = Router()
 
@@ -32,6 +33,9 @@ async def handle_text(msg: Message):
             "role": "user", 
             "content": msg.text
         }]
+
+        # Добавляем временной контекст
+        content[0] = enhance_content_dict_with_datetime(content[0])
 
         # Вызов OpenAI API с передачей previous_response_id
         response_text = await OpenAIClient.responses_request(

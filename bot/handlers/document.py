@@ -8,6 +8,7 @@ from bot.utils.http_client import download_file
 from bot.utils.progress import show_progress_indicator
 from bot.utils.html import send_long_html_message
 from bot.utils.errors import error_handler
+from bot.utils.datetime_context import enhance_content_dict_with_datetime
 
 router = Router()
 
@@ -83,6 +84,9 @@ async def handle_document(msg: Message):
                 ]
             }
         ]
+
+        # Добавляем временной контекст
+        content[0] = enhance_content_dict_with_datetime(content[0])
 
         response_text = await OpenAIClient.responses_request(msg.chat.id, content)
         

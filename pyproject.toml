@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "gpttg"
-version = "1.8.25"
+version = "1.8.27"
 description = "Кроссплатформенный Telegram-бот на OpenAI Responses API с мультимодальностью, учётом расходов и пошаговой генерацией изображений"
 authors = ["zergont <Folist@gmail.com>"]
 license = "MIT"
@@ -16,6 +16,7 @@ aiosqlite = "^0.21.0"
 openai = ">=1.95.0"
 python-dotenv = "^1.1.1"
 backoff = "^2.2.1"
+pytz = "^2024.1"
 # toml = "^0.10.2"  # Удалено - больше не нужно
 
 [tool.poetry.scripts]
