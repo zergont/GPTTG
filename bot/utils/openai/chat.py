@@ -1,7 +1,6 @@
 """Чат с использованием OpenAI Responses API."""
 import asyncio
 from typing import Any, Dict, List
-import backoff
 from aiohttp import ClientError
 from openai import OpenAIError
 import openai
@@ -18,18 +17,13 @@ class ChatManager:
     """Управление чатом через OpenAI Responses API."""
     
     @staticmethod
-    @backoff.on_exception(
-        backoff.expo, 
-        (OpenAIError, ClientError), 
-        max_tries=3, 
-        jitter=backoff.random_jitter,
-        max_time=60
-    )
     async def responses_request(
         chat_id: int,
         user_content: List[Dict[str, Any]],
         previous_response_id: str | None = None,
-        tools: list | None = None  # Добавлено
+        tools: list | None = None,
+        enable_web_search: bool | None = None,   # новое
+        tool_choice: str | None = None           # новое
     ) -> str:
         """
         Отправляет запрос в OpenAI Responses API.
@@ -39,6 +33,8 @@ class ChatManager:
             user_content: Список сообщений для контекста.
             previous_response_id: ID предыдущего ответа (для сохранения контекста).
             tools: Список инструментов (например, web_search_preview).
+            enable_web_search: Включить web_search tool.
+            tool_choice: Выбор инструмента (auto/none/required).
 
         Returns:
             str: Ответ от OpenAI.
@@ -47,7 +43,6 @@ class ChatManager:
             logger.info("Запрос в OpenAI (chat=%s, prev=%s)", 
                        chat_id, previous_response_id)
             
-            # Используем текущую модель (все доступные модели поддерживают vision+Responses API)
             current_model = await ModelsManager.get_current_model()
             
             if previous_response_id is None:
@@ -79,8 +74,14 @@ class ChatManager:
                 "store": True,
             }
 
+            # === Встроенные инструменты ===
+            use_web = True if enable_web_search is None else bool(enable_web_search)
+            if use_web:
+                request_params.setdefault("tools", []).append({"type": "web_search"})
             if tools:
-                request_params["tools"] = tools  # Добавлено
+                request_params.setdefault("tools", []).extend(tools)
+            if tool_choice:
+                request_params["tool_choice"] = tool_choice
 
             # DEBUG: выводим запрос
             if getattr(settings, "debug_mode", False):
@@ -90,20 +91,33 @@ class ChatManager:
                 response = await client.responses.create(**request_params)
             except openai.APITimeoutError:
                 logger.error("OpenAI: превышено время ожидания ответа")
-                raise
-            except openai.RateLimitError:
+                return "⏳ Превышено время ожидания ответа. Попробуйте еще раз."
+            except openai.RateLimitError as e:
                 logger.error("OpenAI: превышен лимит запросов")
-                await asyncio.sleep(1)
-                raise
+                # Извлекаем подробную информацию об ошибке
+                error_details = str(e)
+                remaining_tokens = "неизвестно"
+                reset_time = "неизвестно"
+                
+                # Пытаемся извлечь информацию из ошибки
+                if hasattr(e, 'response') and e.response:
+                    headers = getattr(e.response, 'headers', {})
+                    remaining_tokens = headers.get('x-ratelimit-remaining-tokens', 'неизвестно')
+                    reset_time = headers.get('x-ratelimit-reset-tokens', 'неизвестно')
+                
+                return (
+                    f"⏳ **Превышен лимит токенов OpenAI**\n\n"
+                    f"🔢 Осталось токенов: `{remaining_tokens}`\n"
+                    f"🕒 Сброс через: `{reset_time}` сек\n\n"
+                    f"💡 **Рекомендации:**\n"
+                    f"• Используйте /setmodel → gpt-4o-mini (200k лимит)\n"
+                    f"• Подождите {reset_time} секунд\n"
+                    f"• Упростите запрос (меньше контекста)"
+                )
             except (openai.PermissionDeniedError, openai.BadRequestError) as e:
                 error_message = str(e)
                 logger.warning(f"Проблема с моделью {current_model}: {error_message}")
-                
-                # Возвращаемся к безопасной модели и НЕ повторяем запрос
-                # Просто возвращаем ошибку пользователю
                 await ModelsManager.set_current_model("gpt-4o-mini")
-                
-                # Формируем понятное сообщение для пользователя
                 if "does not have access" in error_message:
                     return f"❌ Нет доступа к модели {current_model}. Модель изменена на gpt-4o-mini. Повторите запрос."
                 elif "not supported with the Responses API" in error_message:
@@ -114,9 +128,8 @@ class ChatManager:
                     return f"❌ Проблема с моделью {current_model}. Модель изменена на gpt-4o-mini. Повторите запрос."
             except Exception as e:
                 logger.error(f"OpenAI:unexpected error: {e}")
-                raise
+                return f"❌ Произошла неожиданная ошибка: {str(e)[:100]}..."
 
-            # DEBUG: выводим ответ
             if getattr(settings, "debug_mode", False):
                 logger.info(f"[DEBUG] OpenAI RESPONSE: {response}")
 

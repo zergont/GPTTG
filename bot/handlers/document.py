@@ -88,7 +88,14 @@ async def handle_document(msg: Message):
         # Добавляем временной контекст
         content[0] = enhance_content_dict_with_datetime(content[0])
 
-        response_text = await OpenAIClient.responses_request(msg.chat.id, content)
+        # Включаем веб-поиск для анализа документов
+        # Больше не передаем tools - используем enable_web_search
+
+        response_text = await OpenAIClient.responses_request(
+            msg.chat.id, 
+            content,
+            enable_web_search=True  # Включаем веб-поиск
+        )
         
         # Отправляем результат с HTML форматированием
         result_text = f"📄 <b>Анализ файла {doc.file_name}:</b>\n\n{response_text}"

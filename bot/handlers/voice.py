@@ -44,13 +44,20 @@ async def handle_voice(msg: Message):
 
         await msg.answer(f"🗣 Вы сказали: {text}")
 
-        # Получаем ответ от модели
+        # Получаем ответ от модели с веб-поиском
         content = [{"type": "message", "role": "user", "content": text}]
         
         # Добавляем временной контекст
         content[0] = enhance_content_dict_with_datetime(content[0])
         
-        response_text = await OpenAIClient.responses_request(msg.chat.id, content)
+        # Включаем веб-поиск для голосовых сообщений
+        # Больше не передаем tools - используем enable_web_search
+        
+        response_text = await OpenAIClient.responses_request(
+            msg.chat.id, 
+            content,
+            enable_web_search=True  # Включаем веб-поиск
+        )
         await msg.answer(response_text)
 
     finally:

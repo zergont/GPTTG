@@ -7,9 +7,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
 import asyncio
-import os
-import subprocess
-from pathlib import Path
 
 from bot.config import settings, VERSION
 from bot.keyboards import main_kb
@@ -18,7 +15,6 @@ from bot.utils.db import get_conn, get_user_display_name
 from bot.utils.progress import show_progress_indicator
 from bot.utils.html import send_long_html_message
 from bot.utils.errors import error_handler
-from bot.utils.datetime_context import enhance_content_dict_with_datetime
 
 router = Router()
 
@@ -61,7 +57,6 @@ async def cmd_help(msg: Message):
         "/start — приветствие и информация о боте",
         "/help — эта справка",
         "/img &lt;промпт&gt; — сгенерировать картинку",
-        "/web &lt;запрос&gt; — выполнить веб-поиск",  # Добавлено описание команды
         "/cancel — отменить текущую операцию",
         "/reset — очистить историю контекста",
         "/stats — показать личные расходы",
@@ -74,9 +69,10 @@ async def cmd_help(msg: Message):
             "/stat — общая статистика",
             "/models — показать доступные модели",
             "/setmodel — изменить текущую модель",
+            "/checkmodel — проверить совместимость модели",
+            "/limits — информация о rate limits",
             "/status — статус системы и служб",
-            "/update — проверить и обновить бота",
-            "/checkmodel — проверить совместимость модели"
+            "/update — проверить и обновить бота"
         ])
     
     help_text = "\n".join(help_lines)
@@ -91,6 +87,7 @@ async def cmd_status(msg: Message):
         return
 
     import subprocess
+    import os
     from pathlib import Path
 
     # Определяем базовую директорию проекта
@@ -479,12 +476,23 @@ async def cmd_checkmodel(msg: Message):
     status_icon = "✅" if is_available else "❌"
     status_text = "модель доступна" if is_available else "модель не найдена среди доступных"
 
+    # Информация о rate limits для разных моделей
+    rate_limits_info = {
+        "gpt-5": "30,000 токенов/минуту",
+        "gpt-4o": "150,000 токенов/минуту", 
+        "gpt-4o-mini": "200,000 токенов/минуту"
+    }
+    
+    limit_info = rate_limits_info.get(current_model, "неизвестно")
+
     response_text = (
         f"🔍 <b>Текущая модель:</b> <code>{current_model}</code>\n"
-        f"{status_icon} Статус: <b>{status_text}</b>\n\n"
+        f"{status_icon} Статус: <b>{status_text}</b>\n"
+        f"📊 Лимит токенов: <code>{limit_info}</code>\n\n"
         f"<b>Действия:</b>\n"
         f"• /models — показать доступные модели\n"
-        f"• /setmodel — сменить модель"
+        f"• /setmodel — сменить модель\n\n"
+        f"💡 <b>Совет:</b> gpt-4о-mini имеет наибольший лимит токенов"
     )
 
     if not is_available:
@@ -493,39 +501,53 @@ async def cmd_checkmodel(msg: Message):
     await send_long_html_message(msg, response_text)
 
 
-# ——— /web —————————————————————————————————————————————— #
-@router.message(F.text.startswith("/web"))
-@error_handler("web_command")
-async def cmd_web(msg: Message):
-    """Выполняет веб-поиск через OpenAI Responses API."""
+# ——— /limits (админ) —————————————————————————————————————————— #
+@router.message(F.text == "/limits")
+@error_handler("limits_command")
+async def cmd_limits(msg: Message):
+    """Показывает информацию о rate limits (только для админа)."""
     if msg.from_user.id != settings.admin_id:
-        await msg.answer("❌ У вас нет прав для использования этой команды.")
         return
 
-    # Извлекаем запрос из команды
-    query = msg.text[len("/web"):].strip()
-    if not query:
-        await msg.answer("❌ Пожалуйста, укажите запрос для веб-поиска. Пример: <code>/web Какая погода в Риме?</code>", parse_mode="HTML")
-        return
+    from bot.utils.openai.models import ModelsManager
 
-    await msg.answer(f"🔍 Выполняю веб-поиск для запроса: <b>{query}</b>", parse_mode="HTML")
-
-    # Формируем запрос к OpenAI Responses API
-    content = [{"type": "message", "role": "user", "content": query}]
+    current_model = await ModelsManager.get_current_model()
     
-    # Добавляем временной контекст
-    content[0] = enhance_content_dict_with_datetime(content[0])
+    # Информация о лимитах разных моделей
+    model_limits = {
+        "gpt-5": {"tokens": "30,000/мин", "requests": "500/мин", "tier": "Tier 5"},
+        "gpt-4o": {"tokens": "150,000/мин", "requests": "10,000/мин", "tier": "Tier 5"},
+        "gpt-4o-mini": {"tokens": "200,000/мин", "requests": "30,000/мин", "tier": "Tier 5"},
+        "gpt-4": {"tokens": "40,000/мин", "requests": "5,000/мин", "tier": "Tier 4"},
+        "gpt-3.5-turbo": {"tokens": "90,000/мин", "requests": "10,000/мин", "tier": "Tier 4"}
+    }
     
-    tools = [{"type": "web_search_preview"}]
-
-    try:
-        # Отправляем запрос в OpenAI API
-        response_text = await OpenAIClient.responses_request(
-            chat_id=msg.chat.id,
-            user_content=content,
-            tools=tools
-        )
-        # Отправляем результат пользователю
-        await msg.answer(f"🌐 <b>Результат веб-поиска:</b>\n\n{response_text}", parse_mode="HTML")
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка при выполнении веб-поиска: {str(e)}")
+    current_limits = model_limits.get(current_model, {
+        "tokens": "неизвестно", 
+        "requests": "неизвестно", 
+        "tier": "неизвестно"
+    })
+    
+    # Статус текущей модели
+    status_emoji = "🟢" if current_model in ["gpt-4o-mini", "gpt-4o"] else "🟡" if current_model == "gpt-5" else "🔴"
+    
+    response_text = (
+        f"📊 <b>Rate Limits Information</b>\n\n"
+        f"🤖 <b>Текущая модель:</b> <code>{current_model}</code> {status_emoji}\n"
+        f"🎯 <b>Лимиты:</b>\n"
+        f"  • Токены: <code>{current_limits['tokens']}</code>\n"
+        f"  • Запросы: <code>{current_limits['requests']}</code>\n"
+        f"  • Тариф: <code>{current_limits['tier']}</code>\n\n"
+        f"📈 <b>Рекомендуемые модели:</b>\n"
+        f"🟢 gpt-4о-mini — 200k токенов/мин (лучший выбор)\n"
+        f"🟢 gpt-4о — 150k токенов/мин (высокое качество)\n"
+        f"🟡 gpt-5 — 30k токенов/мин (новейшая, но ограничения)\n\n"
+        f"💡 <b>Настройки бота:</b>\n"
+        f"  • Retry: <code>отключен</code> ✅\n"
+        f"  • Семафор: <code>1 запрос</code> ✅\n"
+        f"  • Web search: <code>включен</code> 🔍\n\n"
+        f"🔧 /setmodel — сменить модель\n"
+        f"📊 /checkmodel — проверить модель"
+    )
+    
+    await send_long_html_message(msg, response_text)

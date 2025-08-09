@@ -2,15 +2,8 @@
 from dataclasses import dataclass
 import os
 import sys
-import platform
 import re
 from pathlib import Path
-
-# Определяем платформу
-PLATFORM = platform.system().lower()
-IS_WINDOWS = PLATFORM == 'windows'
-IS_LINUX = PLATFORM == 'linux'
-IS_DEVELOPMENT = os.path.exists('.git') and not os.path.exists('/etc/systemd')
 
 def get_version_from_pyproject():
     """Читает версию из pyproject.toml без toml пакета."""
@@ -20,13 +13,21 @@ def get_version_from_pyproject():
     
     try:
         content = pyproject_path.read_text(encoding='utf-8')
-        match = re.search(r'version\s*=\s*"([^"]+)"', content)
+        # Улучшенная регулярка для более точного поиска
+        match = re.search(r'^\s*version\s*=\s*"([^"]+)"', content, re.MULTILINE)
         return match.group(1) if match else "unknown"
     except Exception:
         return "unknown"
 
 # Получаем версию сразу
 VERSION = get_version_from_pyproject()
+
+# Определяем платформу локально
+import platform
+_platform = platform.system().lower()
+IS_WINDOWS = _platform == 'windows'
+IS_LINUX = _platform == 'linux'
+IS_DEVELOPMENT = os.path.exists('.git') and not os.path.exists('/etc/systemd')
 
 @dataclass(frozen=True, slots=True)
 class Settings:
@@ -38,6 +39,7 @@ class Settings:
     whisper_price: float
     dalle_price: float
     max_file_mb: int
+    max_log_mb: int
     debug_mode: bool
     # Платформо-зависимые настройки
     platform: str
@@ -48,7 +50,7 @@ class Settings:
 def create_settings():
     """Создает объект настроек после проверки всех зависимостей."""
     
-    platform_info = f" ({PLATFORM}{'|dev' if IS_DEVELOPMENT else '|prod'})"
+    platform_info = f" ({_platform}{'|dev' if IS_DEVELOPMENT else '|prod'})"
     print(f"GPTTG Telegram Bot v{VERSION}{platform_info}")
 
     # --- Проверка необходимых пакетов ---
@@ -59,8 +61,6 @@ def create_settings():
         "backoff",
         "python_dotenv",
         "aiosqlite",
-        "pytz",
-        # "toml",  # Удалено - больше не нужно
     ]
 
     def check_packages():
@@ -136,6 +136,7 @@ def create_settings():
         ("WHISPER_PRICE", "0.006"),
         ("DALLE_PRICE", "0.040"),
         ("MAX_FILE_MB", "20"),
+        ("MAX_LOG_MB", "5"),
         ("DEBUG_MODE", "1" if IS_DEVELOPMENT else "0"),  # Автоматически включаем debug в dev
     ]
 
@@ -165,9 +166,10 @@ def create_settings():
         whisper_price=float(env_values["WHISPER_PRICE"]),
         dalle_price=float(env_values["DALLE_PRICE"]),
         max_file_mb=int(env_values["MAX_FILE_MB"]),
+        max_log_mb=int(env_values["MAX_LOG_MB"]),
         debug_mode=bool(int(env_values["DEBUG_MODE"])),
         # Платформо-зависимые настройки
-        platform=PLATFORM,
+        platform=_platform,
         is_windows=IS_WINDOWS,
         is_linux=IS_LINUX,
         is_development=IS_DEVELOPMENT

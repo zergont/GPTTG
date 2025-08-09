@@ -13,7 +13,7 @@ router = Router()
 @router.message(lambda msg: msg.text and not msg.text.startswith('/'))
 @error_handler("text_handler")
 async def handle_text(msg: Message):
-    """Обработка текстовых сообщений с индикатором прогресса."""
+    """Обработка текстовых сообщений с индикатором прогресса и веб-поиском."""
     # Получаем previous_response_id из базы
     async with get_conn() as db:
         cur = await db.execute(
@@ -37,11 +37,15 @@ async def handle_text(msg: Message):
         # Добавляем временной контекст
         content[0] = enhance_content_dict_with_datetime(content[0])
 
-        # Вызов OpenAI API с передачей previous_response_id
+        # Включаем веб-поиск для всех текстовых сообщений
+        # Больше не передаем tools - используем enable_web_search
+
+        # Вызов OpenAI API с передачей previous_response_id и включением веб-поиска
         response_text = await OpenAIClient.responses_request(
             msg.chat.id,
             content,
-            prev_id  # Важно! Передаем previous_response_id для экономии токенов
+            prev_id,  # Важно! Передаем previous_response_id для экономии токенов
+            enable_web_search=True  # Включаем веб-поиск
         )
         
         # Отправляем фактический ответ

@@ -1,4 +1,4 @@
-﻿"""Утилиты для отображения индикаторов прогресса."""
+"""Утилиты для отображения индикаторов прогресса."""
 
 import asyncio
 from bot.utils.log import logger
@@ -52,9 +52,13 @@ async def show_progress_indicator(bot, chat_id, max_time=120, interval=2, messag
                 pass
     except Exception as e:
         logger.error(f"Ошибка в индикаторе прогресса: {e}")
-        # Если произошла ошибка, также пытаемся удалить сообщение
-        if waiting_msg:
-            try:
-                await bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
-            except Exception:
-                pass
+        await _safe_delete_message(bot, chat_id, waiting_msg)
+
+
+async def _safe_delete_message(bot, chat_id, waiting_msg):
+    """Безопасное удаление сообщения с логированием."""
+    if waiting_msg:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
+        except Exception as e:
+            logger.debug(f"Не удалось удалить сообщение прогресса: {e}")

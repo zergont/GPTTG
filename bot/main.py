@@ -12,19 +12,6 @@ from bot.utils.log import logger
 from bot.utils.http_client import close_session
 
 
-def ensure_single_instance_safe():
-    """Безопасная проверка единственного экземпляра с fallback."""
-    try:
-        from bot.utils.single_instance import ensure_single_instance
-        return ensure_single_instance("gpttg-bot.lock")
-    except Exception as e:
-        logger.warning(f"⚠️ Не удалось настроить блокировку экземпляра: {e}")
-        logger.info("🔄 Продолжаю запуск без блокировки...")
-        # Возвращаем dummy context manager
-        from contextlib import nullcontext
-        return nullcontext()
-
-
 async def main():
     """Основная функция запуска бота."""
     # Инициализация БД только один раз при старте
@@ -59,10 +46,9 @@ async def main():
 
 
 def run_bot():
-    """Запуск бота с опциональной проверкой единственного экземпляра."""
-    with ensure_single_instance_safe():
-        logger.info("🚀 Запуск бота...")
-        asyncio.run(main())
+    """Запуск бота без проверки единственного экземпляра."""
+    logger.info("🚀 Запуск бота...")
+    asyncio.run(main())
 
 
 if __name__ == "__main__":

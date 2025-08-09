@@ -47,13 +47,21 @@ async def handle_photo(msg: Message):
     # Добавляем временной контекст
     content[0] = enhance_content_dict_with_datetime(content[0])
 
+    # Включаем веб-поиск для фото с подписями
+    # Больше не передаем tools - используем enable_web_search
+
     # Запускаем индикатор прогресса
     progress_task = asyncio.create_task(
         show_progress_indicator(msg.bot, msg.chat.id)
     )
 
     try:
-        response_text = await OpenAIClient.responses_request(msg.chat.id, content, prev_id)
+        response_text = await OpenAIClient.responses_request(
+            msg.chat.id, 
+            content, 
+            prev_id,
+            enable_web_search=True  # Включаем веб-поиск
+        )
         await msg.answer(response_text)
         
     finally:
