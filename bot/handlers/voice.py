@@ -2,13 +2,16 @@
 from aiogram import Router
 from aiogram.types import Message
 import asyncio
+import io
+import math
+
 from bot.config import settings
 from bot.utils.openai import OpenAIClient
 from bot.utils.http_client import download_file
 from bot.utils.progress import show_progress_indicator
 from bot.utils.errors import error_handler
 from bot.utils.datetime_context import enhance_content_dict_with_datetime
-import io
+from bot.utils.db import get_conn
 
 router = Router()
 
@@ -44,6 +47,16 @@ async def handle_voice(msg: Message):
 
         await msg.answer(f"🗣 Вы сказали: {text}")
 
+        # Учёт расходов Whisper: стоимость за полные минуты
+        minutes = max(1, math.ceil((v.duration or 0) / 60))
+        cost = minutes * settings.whisper_price
+        async with get_conn() as db:
+            await db.execute(
+                "INSERT INTO usage(chat_id, user_id, tokens, cost, model) VALUES (?, ?, ?, ?, ?)",
+                (msg.chat.id, msg.from_user.id, 0, cost, "whisper-1")
+            )
+            await db.commit()
+
         # Получаем ответ от модели с веб-поиском
         content = [{"type": "message", "role": "user", "content": text}]
         
@@ -55,6 +68,7 @@ async def handle_voice(msg: Message):
         
         response_text = await OpenAIClient.responses_request(
             msg.chat.id, 
+            msg.from_user.id,
             content,
             enable_web_search=True  # Включаем веб-поиск
         )

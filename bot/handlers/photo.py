@@ -15,24 +15,20 @@ router = Router()
 @error_handler("photo_handler")
 async def handle_photo(msg: Message):
     caption = msg.caption or "Опиши изображение"
-    # Берём самое большое фото
     largest = max(msg.photo, key=lambda p: p.file_size)
     if largest.file_size > settings.max_file_mb * 1024 * 1024:
         await msg.reply("Файл слишком большой (>20 МБ)")
         return
 
-    # Получаем URL файла
     file = await msg.bot.get_file(largest.file_id)
     file_url = f"https://api.telegram.org/file/bot{settings.bot_token}/{file.file_path}"
 
-    # Получаем previous_response_id из базы
     async with get_conn() as db:
         row = await (await db.execute(
             "SELECT last_response FROM chat_history WHERE chat_id = ?", (msg.chat.id,)
         )).fetchone()
     prev_id = row[0] if row else None
 
-    # Формируем контент для Responses API
     content = [
         {
             "type": "message",
@@ -43,14 +39,8 @@ async def handle_photo(msg: Message):
             ]
         }
     ]
-
-    # Добавляем временной контекст
     content[0] = enhance_content_dict_with_datetime(content[0])
 
-    # Включаем веб-поиск для фото с подписями
-    # Больше не передаем tools - используем enable_web_search
-
-    # Запускаем индикатор прогресса
     progress_task = asyncio.create_task(
         show_progress_indicator(msg.bot, msg.chat.id)
     )
@@ -58,13 +48,12 @@ async def handle_photo(msg: Message):
     try:
         response_text = await OpenAIClient.responses_request(
             msg.chat.id, 
+            msg.from_user.id,
             content, 
             prev_id,
-            enable_web_search=True  # Включаем веб-поиск
+            enable_web_search=True
         )
         await msg.answer(response_text)
-        
     finally:
-        # Гарантированно отменяем задачу индикации
         if progress_task and not progress_task.done():
             progress_task.cancel()

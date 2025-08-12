@@ -1,53 +1,52 @@
-"""Оптимизированный HTTP клиент для загрузки файлов."""
+"""HTTP клиент для загрузки файлов из Telegram и сетевых источников."""
 import aiohttp
-from bot.config import settings
+from bot.utils.log import logger
 
-# Создаем единый HTTP клиент для всего приложения
 _session: aiohttp.ClientSession | None = None
 
-async def get_session() -> aiohttp.ClientSession:
-    """Получить HTTP сессию (singleton)."""
+def get_session() -> aiohttp.ClientSession:
     global _session
     if _session is None or _session.closed:
-        # Исправлено: используем секунды вместо мегабайт для таймаута
-        timeout = aiohttp.ClientTimeout(total=60, connect=10)
-        _session = aiohttp.ClientSession(
-            timeout=timeout,
-            connector=aiohttp.TCPConnector(
-                limit=10,           # Уменьшено с 20
-                limit_per_host=5,   # Уменьшено с 10
-                ttl_dns_cache=300,  # Кэш DNS на 5 минут
-                use_dns_cache=True
-            )
-        )
+        timeout = aiohttp.ClientTimeout(total= get_total_timeout())
+        _session = aiohttp.ClientSession(timeout=timeout)
     return _session
 
+def get_total_timeout() -> float:
+    # Привязываем HTTP-таймаут к OpenAI таймауту с буфером
+    from bot.config import settings
+    try:
+        return float(getattr(settings, "openai_timeout_seconds", 180)) + 30.0
+    except Exception:
+        return 210.0
+
+async def download_file(url: str) -> bytes:
+    """Скачивает файл по URL и возвращает содержимое в виде bytes.
+    Использует общую aiohttp-сессию с увеличенным таймаутом.
+    """
+    session = get_session()
+    try:
+        async with session.get(url) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                msg = f"Ошибка загрузки файла {url}: {resp.status} {text[:200]}"
+                logger.error(msg)
+                raise aiohttp.ClientResponseError(
+                    request_info=resp.request_info,
+                    history=resp.history,
+                    status=resp.status,
+                    message=msg,
+                    headers=resp.headers,
+                )
+            return await resp.read()
+    except Exception as e:
+        logger.error(f"download_file: {e}")
+        raise
+
 async def close_session():
-    """Закрыть HTTP сессию."""
     global _session
     if _session and not _session.closed:
-        await _session.close()
-        _session = None
-
-async def download_file(url: str, max_size: int = None) -> bytes:
-    """Загрузить файл по URL с ограничением размера."""
-    session = await get_session()
-    max_size = max_size or (settings.max_file_mb * 1024 * 1024)
-    
-    async with session.get(url) as resp:
-        if resp.status != 200:
-            raise aiohttp.ClientError(f"HTTP {resp.status}")
-        
-        # Проверяем размер файла из заголовков
-        content_length = resp.headers.get('content-length')
-        if content_length and int(content_length) > max_size:
-            raise aiohttp.ClientError(f"Файл слишком большой: {content_length} байт")
-        
-        # Чтение с ограничением размера
-        data = b""
-        async for chunk in resp.content.iter_chunked(8192):
-            data += chunk
-            if len(data) > max_size:
-                raise aiohttp.ClientError(f"Файл превышает лимит: {max_size} байт")
-        
-        return data
+        try:
+            await _session.close()
+            _session = None
+        except Exception as e:
+            logger.debug(f"Ошибка закрытия HTTP-сессии: {e}")

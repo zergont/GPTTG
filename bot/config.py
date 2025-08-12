@@ -46,6 +46,10 @@ class Settings:
     is_windows: bool
     is_linux: bool
     is_development: bool
+    # Новые настройки OpenAI
+    openai_timeout_seconds: int
+    openai_max_retries: int
+    openai_global_concurrency: int
 
 def create_settings():
     """Создает объект настроек после проверки всех зависимостей."""
@@ -137,7 +141,10 @@ def create_settings():
         ("DALLE_PRICE", "0.040"),
         ("MAX_FILE_MB", "20"),
         ("MAX_LOG_MB", "5"),
-        ("DEBUG_MODE", "1" if IS_DEVELOPMENT else "0"),  # Автоматически включаем debug в dev
+        ("DEBUG_MODE", "1" if IS_DEVELOPMENT else "0"),
+        ("OPENAI_TIMEOUT_SECONDS", "180"),
+        ("OPENAI_MAX_RETRIES", "0"),
+        ("OPENAI_GLOBAL_CONCURRENCY", "4"),
     ]
 
     env_values = {}
@@ -172,7 +179,11 @@ def create_settings():
         platform=_platform,
         is_windows=IS_WINDOWS,
         is_linux=IS_LINUX,
-        is_development=IS_DEVELOPMENT
+        is_development=IS_DEVELOPMENT,
+        # Новые настройки OpenAI
+        openai_timeout_seconds=int(env_values["OPENAI_TIMEOUT_SECONDS"]),
+        openai_max_retries=int(env_values["OPENAI_MAX_RETRIES"]),
+        openai_global_concurrency=int(env_values["OPENAI_GLOBAL_CONCURRENCY"]),
     )
 
 # Создаем настройки только при импорте модуля

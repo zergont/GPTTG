@@ -8,6 +8,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
 import asyncio
 
+from pathlib import Path
+
 from bot.config import settings, VERSION
 from bot.keyboards import main_kb
 from bot.utils.openai import OpenAIClient
@@ -72,11 +74,33 @@ async def cmd_help(msg: Message):
             "/checkmodel — проверить совместимость модели",
             "/limits — информация о rate limits",
             "/status — статус системы и служб",
-            "/update — проверить и обновить бота"
+            "/update — проверить и обновить бота",
+            "/pricing — цены моделей"
         ])
     
     help_text = "\n".join(help_lines)
     await send_long_html_message(msg, help_text)
+
+
+# ——— /pricing (админ) —————————————————————————————————————————— #
+@router.message(F.text == "/pricing")
+@error_handler("pricing_command")
+async def cmd_pricing(msg: Message):
+    if msg.from_user.id != settings.admin_id:
+        return
+    from bot.utils.openai.models import ModelsManager
+    models = await ModelsManager.get_available_models()
+    lines = ["💵 <b>Цены за 1k токенов</b> (input / cached_input / output):\n"]
+    for m in models:
+        prices = ModelsManager.get_model_prices(m['id'])
+        inp = prices.get('input')
+        cached = prices.get('cached_input')
+        out = prices.get('output')
+        if cached is not None:
+            lines.append(f"• <code>{m['id']}</code>: ${inp:.5f} / ${cached:.5f} / ${out:.5f}")
+        else:
+            lines.append(f"• <code>{m['id']}</code>: ${inp:.5f} / ${out:.5f}")
+    await send_long_html_message(msg, "\n".join(lines))
 
 
 # ——— /status (админ) —————————————————————————————————————————— #
@@ -88,59 +112,91 @@ async def cmd_status(msg: Message):
 
     import subprocess
     import os
-    from pathlib import Path
+    import platform
 
     # Определяем базовую директорию проекта
     bot_dir = Path(__file__).parent.parent  # из bot/handlers/ в bot/
     project_root = bot_dir.parent  # из bot/ в корень проекта
 
-    # Проверяем файл блокировки
+    is_windows = settings.is_windows or platform.system().lower() == 'windows'
+
+    # Проверяем файл блокировки (single-instance)
     lock_file = project_root / "gpttg-bot.lock"
-    lock_status = "🔒 Активна" if lock_file.exists() else "🔓 Отсутствует"
+    lock_status = "🔓 Отсутствует"
     if lock_file.exists():
         try:
-            with open(lock_file, 'r') as f:
-                lock_pid = f.read().strip()
-            lock_status += f" (PID: {lock_pid})"
+            with open(lock_file, 'r', encoding='utf-8') as f:
+                lock_pid_str = f.read().strip()
+            lock_pid = int(lock_pid_str)
+
+            # Проверяем, активен ли процесс БЕЗ посылки сигнала на Windows
+            running = False
+            if is_windows:
+                try:
+                    import ctypes
+                    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                    handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, lock_pid)
+                    if handle:
+                        ctypes.windll.kernel32.CloseHandle(handle)
+                        running = True
+                    else:
+                        running = False
+                except Exception:
+                    running = False
+            else:
+                try:
+                    os.kill(lock_pid, 0)  # POSIX: 0 не посылает сигнал, только проверяет
+                    running = True
+                except ProcessLookupError:
+                    running = False
+                except PermissionError:
+                    running = True
+
+            lock_status = f"🔒 Активна (PID: {lock_pid}, процесс: {'жив' if running else 'мертв'})"
         except Exception:
-            lock_status += " (данные недоступны)"
+            lock_status = "⚠️ Файл существует, но прочитать не удалось"
 
     # Проверяем количество процессов бота
-    process_count = "неизвестно"
-    try:
-        result = subprocess.run(['pgrep', '-f', 'bot.main'], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            process_count = len(result.stdout.strip().split('\n'))
-    except Exception as e:
-        process_count = f"ошибка: {str(e)[:30]}..."
-
-    # Проверяем systemd службы
-    systemd_services = []
-    services_to_check = [
-        ("gpttg-bot.service", "Основная служба бота"),
-        ("gpttg-update.service", "Служба автообновления"),
-        ("gpttg-update.timer", "Таймер автообновления")
-    ]
-
-    for service_name, description in services_to_check:
+    process_count = "n/a"
+    if not is_windows:
         try:
-            result = subprocess.run(['systemctl', 'status', service_name], capture_output=True, text=True, timeout=5)
-            status_output = result.stdout.strip() if result.returncode == 0 else result.stderr.strip()
-            if "Active: active" in status_output:
-                icon = "✅"
-                status_text = "активна"
-            elif "Active: inactive" in status_output and "Result: exit-code" not in status_output:
-                icon = "⚫"
-                status_text = "завершена успешно (oneshot)"
-            elif "failed" in status_output or "Result: exit-code" in status_output:
-                icon = "❌"
-                status_text = "сбой"
+            result = subprocess.run(['pgrep', '-f', 'bot.main'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                pids = [p for p in result.stdout.strip().split('\n') if p]
+                process_count = len(pids)
             else:
-                icon = "⚠️"
-                status_text = "неизвестно"
-            systemd_services.append(f"{icon} {service_name}: {status_text}")
+                process_count = 0
         except Exception as e:
-            systemd_services.append(f"❓ {service_name}: ошибка проверки ({str(e)[:30]})")
+            process_count = f"ошибка: {str(e)[:30]}..."
+
+    # Проверяем systemd службы (только Linux)
+    systemd_services = []
+    if not is_windows:
+        services_to_check = [
+            ("gpttg-bot.service", "Основная служба бота"),
+            ("gpttg-update.service", "Служба автообновления"),
+            ("gpttg-update.timer", "Таймер автообновления")
+        ]
+
+        for service_name, description in services_to_check:
+            try:
+                result = subprocess.run(['systemctl', 'status', service_name], capture_output=True, text=True, timeout=5)
+                status_output = result.stdout.strip() if result.returncode == 0 else result.stderr.strip()
+                if "Active: active" in status_output:
+                    icon = "✅"
+                    status_text = "активна"
+                elif "Active: inactive" in status_output and "Result: exit-code" not in status_output:
+                    icon = "⚫"
+                    status_text = "завершена успешно (oneshot)"
+                elif "failed" in status_output or "Result: exit-code" in status_output:
+                    icon = "❌"
+                    status_text = "сбой"
+                else:
+                    icon = "⚠️"
+                    status_text = "неизвестно"
+                systemd_services.append(f"{icon} {service_name}: {status_text}")
+            except Exception as e:
+                systemd_services.append(f"❓ {service_name}: ошибка проверки ({str(e)[:30]})")
 
     # Проверяем системные файлы
     version_files = []
@@ -173,22 +229,20 @@ async def cmd_status(msg: Message):
         f"📋 Версия бота: <code>{VERSION}</code>\n"
         f"🖥️ Платформа: <code>{settings.platform} ({'dev' if settings.is_development else 'prod'})</code>\n"
         f"🔒 Блокировка экземпляра: {lock_status}\n"
-        f"⚙️ Процессов bot.main: <code>{str(process_count)}</code>\n\n"
     )
+    if not is_windows:
+        status_text += f"⚙️ Процессов bot.main: <code>{str(process_count)}</code>\n\n"
 
-    # Добавляем информацию о systemd службах
     if systemd_services:
         status_text += f"🔧 <b>Системные службы:</b>\n"
         for service_info in systemd_services:
             status_text += f"  {service_info}\n"
         status_text += "\n"
 
-    # Добавляем информацию о системных файлах
     status_text += f"💾 <b>Системные файлы:</b>\n"
     for file_info in version_files:
         status_text += f"  {file_info}\n"
 
-    # Отправляем единое сообщение
     await send_long_html_message(msg, status_text)
 
 
@@ -215,6 +269,7 @@ async def cmd_models(msg: Message):
     
     await send_long_html_message(msg, models_text)
         
+
 
 # ——— /setmodel (админ) —————————————————————————————————————————— #
 @router.message(F.text == "/setmodel")
@@ -246,7 +301,7 @@ async def cmd_setmodel(msg: Message):
 
 
 # ——— Callback для смены модели —————————————————————————————————————————— #
-@router.callback_query(F.data.startswith("setmodel:"))
+@router.callback_query(lambda c: c.data and c.data.startswith("setmodel:"))
 @error_handler("setmodel_callback")
 async def callback_setmodel(callback: CallbackQuery):
     """Обрабатывает выбор модели через inline кнопку."""
@@ -391,6 +446,7 @@ async def imggen_get_prompt(msg: Message, state: FSMContext):
     await state.update_data(prompt=msg.text)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
+
             [InlineKeyboardButton(text="Вертикальный (1024x1792)", callback_data="img_fmt_vert")],
             [InlineKeyboardButton(text="Горизонтальный (1792x1024)", callback_data="img_fmt_horiz")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="img_cancel")]
@@ -544,7 +600,7 @@ async def cmd_limits(msg: Message):
         f"🟡 gpt-5 — 30k токенов/мин (новейшая, но ограничения)\n\n"
         f"💡 <b>Настройки бота:</b>\n"
         f"  • Retry: <code>отключен</code> ✅\n"
-        f"  • Семафор: <code>1 запрос</code> ✅\n"
+        f"  • Семафор: <code>1 запрос/чат, {getattr(settings, 'openai_global_concurrency', 4)} глобально</code> ✅\n"
         f"  • Web search: <code>включен</code> 🔍\n\n"
         f"🔧 /setmodel — сменить модель\n"
         f"📊 /checkmodel — проверить модель"

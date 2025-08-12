@@ -1,6 +1,8 @@
 """Генерация изображений через DALL-E."""
 from bot.utils.log import logger
-from .base import client, RATE_LIMIT
+from .base import client, oai_limiter
+from bot.utils.db import get_conn
+from bot.config import settings
 
 
 class DalleManager:
@@ -9,9 +11,8 @@ class DalleManager:
     @staticmethod
     async def generate_image(prompt: str, size: str, chat_id: int, user_id: int) -> str | None:
         """Генерирует изображение через OpenAI DALL·E и возвращает URL."""
-        async with RATE_LIMIT:
+        async with oai_limiter(chat_id):
             try:
-                # Используем официальный AsyncOpenAI для генерации изображения
                 response = await client.images.generate(
                     model="dall-e-3",
                     prompt=prompt,
@@ -19,9 +20,16 @@ class DalleManager:
                     size=size,
                     user=str(user_id)
                 )
-                # DALL·E 3 возвращает список изображений
                 if response and hasattr(response, 'data') and response.data:
-                    return response.data[0].url
+                    url = response.data[0].url
+                    # Учёт расходов DALL·E: фиксированная цена из настроек
+                    async with get_conn() as db:
+                        await db.execute(
+                            "INSERT INTO usage(chat_id, user_id, tokens, cost, model) VALUES (?, ?, ?, ?, ?)",
+                            (chat_id, user_id, 0, settings.dalle_price, "dall-e-3")
+                        )
+                        await db.commit()
+                    return url
                 logger.error(f"DALL·E не вернул изображение: {response}")
                 return None
             except Exception as e:

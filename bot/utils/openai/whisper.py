@@ -1,7 +1,7 @@
 """Распознавание речи через Whisper."""
 import io
 from bot.utils.log import logger
-from .base import client, RATE_LIMIT
+from .base import client, oai_limiter
 
 
 class WhisperManager:
@@ -10,7 +10,7 @@ class WhisperManager:
     @staticmethod
     async def transcribe_audio(audio_file: io.BytesIO, chat_id: int, user_id: int) -> str:
         """Распознаёт речь с помощью OpenAI Whisper и возвращает текст."""
-        async with RATE_LIMIT:
+        async with oai_limiter(chat_id):
             try:
                 logger.info(f"Отправка аудио в Whisper для chat_id={chat_id}, user_id={user_id}")
                 audio_file.seek(0)

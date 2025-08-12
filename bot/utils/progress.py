@@ -2,8 +2,9 @@
 
 import asyncio
 from bot.utils.log import logger
+from bot.config import settings
 
-async def show_progress_indicator(bot, chat_id, max_time=120, interval=2, message="Обрабатываю ваш запрос"):
+async def show_progress_indicator(bot, chat_id, max_time: int | None = None, interval=2, message="Обрабатываю ваш запрос"):
     """
     Показывает индикатор загрузки для aiogram 3.x
     
@@ -17,6 +18,13 @@ async def show_progress_indicator(bot, chat_id, max_time=120, interval=2, messag
     indicators = ["⏳", "🔄", "⌛", "🤔", "💭", "🧠"]
     waiting_msg = None
     
+    # Если max_time не задан — вычисляем умный дефолт: таймаут OpenAI + 30 сек буфера
+    if max_time is None:
+        try:
+            max_time = int(getattr(settings, "openai_timeout_seconds", 180)) + 30
+        except Exception:
+            max_time = 210
+    
     try:
         # Сначала отправляем сообщение о начале обработки
         waiting_msg = await bot.send_message(
@@ -25,7 +33,7 @@ async def show_progress_indicator(bot, chat_id, max_time=120, interval=2, messag
         )
         
         # Затем периодически обновляем его, чтобы показать прогресс
-        max_cycles = max_time // interval
+        max_cycles = max(1, max_time // interval)
         for i in range(max_cycles):
             await asyncio.sleep(interval)
             current_indicator = indicators[i % len(indicators)]
@@ -40,15 +48,12 @@ async def show_progress_indicator(bot, chat_id, max_time=120, interval=2, messag
             )
     except asyncio.CancelledError:
         # Задача была отменена, значит ответ готов
-        # Удаляем сообщение о прогрессе, но игнорируем любые ошибки
         if waiting_msg:
             try:
                 await bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
             except asyncio.CancelledError:
-                # Если удаление тоже было отменено, просто игнорируем
                 pass
             except Exception:
-                # Игнорируем любые другие ошибки (сообщение уже удалено, права доступа и т.д.)
                 pass
     except Exception as e:
         logger.error(f"Ошибка в индикаторе прогресса: {e}")

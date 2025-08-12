@@ -2,7 +2,7 @@
 import io
 import openai
 from bot.utils.log import logger
-from .base import client, RATE_LIMIT
+from .base import client, oai_limiter
 
 
 class FilesManager:
@@ -11,7 +11,7 @@ class FilesManager:
     @staticmethod
     async def upload_file(file_data: bytes, filename: str, purpose: str = "user_data", chat_id: int | None = None) -> str:
         """Загружает файл в OpenAI, возвращает file_id и сохраняет его в БД если chat_id указан."""
-        async with RATE_LIMIT:
+        async with oai_limiter(chat_id):
             logger.info(f"Загружаем файл {filename} в OpenAI")
             file_obj = io.BytesIO(file_data)
             file_obj.name = filename

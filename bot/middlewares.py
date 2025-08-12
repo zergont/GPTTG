@@ -2,16 +2,10 @@
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, Message, CallbackQuery
 from bot.utils.log import logger
-from bot.utils.db import init_db, save_user, mark_user_welcomed
+from bot.utils.db import save_user, mark_user_welcomed
 from bot.utils.errors import ErrorHandler
 from bot.keyboards import main_kb
 from bot.config import settings
-
-
-class StartupMiddleware(BaseMiddleware):
-    async def __call__(self, handler, event: TelegramObject, data):
-        # Больше не инициализируем БД здесь!
-        return await handler(event, data)
 
 
 class UserMiddleware(BaseMiddleware):
