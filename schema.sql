@@ -1,4 +1,4 @@
-﻿-- Последний response‑id для чата, чтобы использовать `previous_response_id`
+-- Последний response‑id для чата, чтобы использовать `previous_response_id`
 CREATE TABLE IF NOT EXISTS chat_history (
     chat_id       INTEGER PRIMARY KEY,
     last_response TEXT
@@ -44,6 +44,21 @@ CREATE INDEX IF NOT EXISTS idx_usage_model ON usage(model);
 CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage(ts);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_openai_files_chat_id ON openai_files(chat_id);
+
+-- Напоминания (одноразовые)
+CREATE TABLE IF NOT EXISTS reminders (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id     INTEGER NOT NULL,
+    user_id     INTEGER NOT NULL,
+    text        TEXT    NOT NULL,
+    due_at      DATETIME NOT NULL,   -- UTC
+    silent      INTEGER DEFAULT 0,   -- 0/1
+    status      TEXT    DEFAULT 'scheduled',
+    executed_at DATETIME,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_reminders_due_status ON reminders(status, due_at);
+CREATE INDEX IF NOT EXISTS idx_reminders_chat ON reminders(chat_id);
 
 -- Вставляем дефолтную модель
 INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('current_model', 'gpt-4o-mini');
