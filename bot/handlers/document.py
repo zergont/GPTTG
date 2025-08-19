@@ -67,7 +67,7 @@ async def handle_document(msg: Message):
                 ]
             }
         ]
-        content[0] = enhance_content_dict_with_datetime(content[0])
+        content[0] = await enhance_content_dict_with_datetime(content[0], msg.from_user.id)
 
         response_text = await OpenAIClient.responses_request(
             msg.chat.id, 
