@@ -450,9 +450,9 @@ async def imggen_get_prompt(msg: Message, state: FSMContext):
     await state.update_data(prompt=msg.text)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-
             [InlineKeyboardButton(text="Вертикальный (1024x1792)", callback_data="img_fmt_vert")],
             [InlineKeyboardButton(text="Горизонтальный (1792x1024)", callback_data="img_fmt_horiz")],
+            [InlineKeyboardButton(text="Квадратный (1024x1024)", callback_data="img_fmt_square")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="img_cancel")]
         ]
     )
@@ -475,8 +475,12 @@ async def imggen_get_format(callback: CallbackQuery, state: FSMContext):
     prompt = data.get("prompt") or "Смешной кот"
     if callback.data == "img_fmt_vert":
         size = "1024x1792"
-    else:
+    elif callback.data == "img_fmt_horiz":
         size = "1792x1024"
+    elif callback.data == "img_fmt_square":
+        size = "1024x1024"
+    else:
+        size = "1024x1024"
     # Сразу отвечаем на callback, чтобы Telegram не выдал ошибку
     await callback.answer()
     progress_task = None
@@ -549,7 +553,7 @@ async def cmd_checkmodel(msg: Message):
         f"🔍 <b>Текущая модель:</b> <code>{current_model}</code>\n"
         f"{status_icon} Статус: <b>{status_text}</b>\n"
         f"📊 Лимит токенов: <code>{limit_info}</code>\n\n"
-        f"<b>Действия:</b>\n"
+        f"<b>Д действи я:</b>\n"
         f"• /models — показать доступные модели\n"
         f"• /setmodel — сменить модель\n\n"
         f"💡 <b>Совет:</b> gpt-4о-mini имеет наибольший лимит токенов"
