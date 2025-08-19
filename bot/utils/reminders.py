@@ -10,6 +10,7 @@ from aiogram import Bot
 
 from bot.utils.db import get_conn
 from bot.utils.log import logger
+from bot.utils.openai import OpenAIClient
 
 
 @dataclass
@@ -55,17 +56,46 @@ async def _mark_status(reminder_id: int, status: str) -> None:
 
 
 async def _handle_one(bot: Bot, r: Reminder) -> None:
-    # Просто отправляем напоминание в чат, без вызова модели, чтобы избежать циклов
+    """Формирует текст уведомления через модель и отправляет его пользователю."""
     try:
-        text = f"🔔 Напоминание: {r.text}" if not r.text.lower().startswith("напоминание") else r.text
-        await bot.send_message(r.chat_id, text, disable_notification=r.silent)
+        # Формируем краткий запрос к модели на основе напоминания
+        dt_utc = r.due_at  # строка в UTC '%Y-%m-%d %H:%M:%S'
+        instruction = (
+            "Сформируй одно короткое уведомление по сработавшему напоминанию. "
+            "Сообщение должно быть лаконичным и понятным. Если уместно, можешь добавить полезный контекст (например, краткую сводку погоды, дорожную ситуацию, время), но избегай лишней болтовни."
+        )
+        user_msg = f"Напоминание: {r.text}. Сработало сейчас (UTC {dt_utc})."
+        content = [{
+            "type": "message",
+            "role": "user",
+            "content": f"{instruction}\n\n{user_msg}"
+        }]
+
+        # Просим модель; отключаем инструменты напоминаний, можно оставить web_search=auto
+        response_text = await OpenAIClient.responses_request(
+            r.chat_id,
+            r.user_id,
+            content,
+            previous_response_id=None,
+            enable_web_search=True,
+            include_reminder_tools=False,
+        )
+
+        # Отправляем ответ модели
+        await bot.send_message(r.chat_id, response_text, disable_notification=r.silent)
         await _mark_status(r.id, "done")
     except Exception as e:
         logger.error(f"reminder {r.id} handling failed: {e}")
+        # Фолбэк: старое поведение (не блокируем остальные напоминания)
         try:
-            await _mark_status(r.id, "error")
+            text = f"🔔 Напоминание: {r.text}" if not r.text.lower().startswith("напоминание") else r.text
+            await bot.send_message(r.chat_id, text, disable_notification=r.silent)
+            await _mark_status(r.id, "done")
         except Exception:
-            pass
+            try:
+                await _mark_status(r.id, "error")
+            except Exception:
+                pass
 
 
 def start_reminders_scheduler(bot: Bot) -> asyncio.Task:

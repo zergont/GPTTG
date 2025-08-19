@@ -30,7 +30,8 @@ async def handle_text(msg: Message):
             "role": "user", 
             "content": msg.text
         }]
-        content[0] = enhance_content_dict_with_datetime(content[0])
+        # Добавляем временной контекст с учётом TZ пользователя
+        content[0] = await enhance_content_dict_with_datetime(content[0], msg.from_user.id)
 
         response_text = await OpenAIClient.responses_request(
             msg.chat.id,

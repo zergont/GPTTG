@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import logging
 from aiogram.types import User
 import asyncio
+import pytz
 _schema_applied = False
 _schema_lock = asyncio.Lock()
 
@@ -42,6 +43,20 @@ async def get_conn():
                 await db.close()
 
 
+async def _ensure_users_timezone_column():
+    """Гарантирует наличие столбца users.timezone."""
+    async with get_conn() as db:
+        try:
+            cur = await db.execute("PRAGMA table_info(users)")
+            cols = await cur.fetchall()
+            col_names = {c[1] for c in cols}
+            if "timezone" not in col_names:
+                await db.execute("ALTER TABLE users ADD COLUMN timezone TEXT")
+                await db.commit()
+        except Exception as e:
+            # На старых SQLite могут быть ограничения, просто логируем
+            logger.debug(f"ensure timezone column: {e}")
+
 
 async def init_db():
     """Применяет schema.sql ровно один раз, потокобезопасно."""
@@ -59,11 +74,15 @@ async def init_db():
             async with get_conn() as db:
                 await db.executescript(sql_script)
                 await db.commit()
+            # Миграция столбца timezone
+            await _ensure_users_timezone_column()
             _schema_applied = True
             logger.debug("↪️  Schema applied")
         except Exception as e:
             logger.error(f"Ошибка инициализации БД: {e}")
             raise
+
+
 async def save_user(user: User) -> bool:
     """Сохраняет информацию о пользователе. Возвращает True, если пользователь новый."""
     async with get_conn() as db:
@@ -156,6 +175,49 @@ async def delete_openai_file_ids_by_chat(chat_id: int):
             (chat_id,),
         )
         await db.commit()
+
+
+async def get_user_timezone(user_id: int) -> str:
+    """Возвращает таймзону пользователя (IANA, например 'Europe/Moscow').
+    Если столбца/значения нет — возвращает дефолт 'Europe/Moscow'."""
+    default_tz = "Europe/Moscow"
+    async with get_conn() as db:
+        try:
+            cur = await db.execute("SELECT timezone FROM users WHERE user_id = ?", (user_id,))
+            row = await cur.fetchone()
+            if row and row[0]:
+                return str(row[0])
+            return default_tz
+        except Exception:
+            # Столбца timezone может не быть
+            return default_tz
+
+
+async def get_user_timezone_or_none(user_id: int) -> str | None:
+    """Возвращает таймзону пользователя или None, если не задана/столбца нет."""
+    async with get_conn() as db:
+        try:
+            cur = await db.execute("SELECT timezone FROM users WHERE user_id = ?", (user_id,))
+            row = await cur.fetchone()
+            if row and row[0]:
+                return str(row[0])
+            return None
+        except Exception:
+            return None
+
+
+async def set_user_timezone(user_id: int, tz_name: str) -> bool:
+    """Устанавливает таймзону пользователя. Возвращает True при успехе."""
+    # Валидация
+    try:
+        pytz.timezone(tz_name)
+    except Exception:
+        return False
+    async with get_conn() as db:
+        await db.execute("UPDATE users SET timezone = ? WHERE user_id = ?", (tz_name, user_id))
+        await db.commit()
+    return True
+
 
 async def close_pool():
     """Закрывает все соединения в пуле (вызывать при завершении приложения)."""
