@@ -8,6 +8,7 @@ from bot.utils.db import get_conn
 from bot.utils.progress import show_progress_indicator
 from bot.utils.errors import error_handler
 from bot.utils.datetime_context import enhance_content_dict_with_datetime
+from bot.utils.html import send_long_html_message, escape_html
 
 router = Router()
 
@@ -53,7 +54,8 @@ async def handle_photo(msg: Message):
             prev_id,
             enable_web_search=True
         )
-        await msg.answer(response_text)
+        safe_text = escape_html(response_text or "")
+        await send_long_html_message(msg, safe_text)
     finally:
         if progress_task and not progress_task.done():
             progress_task.cancel()

@@ -6,7 +6,7 @@ from bot.config import settings
 from bot.utils.openai import OpenAIClient
 from bot.utils.http_client import download_file
 from bot.utils.progress import show_progress_indicator
-from bot.utils.html import send_long_html_message
+from bot.utils.html import send_long_html_message, escape_html
 from bot.utils.errors import error_handler
 from bot.utils.datetime_context import enhance_content_dict_with_datetime
 
@@ -36,7 +36,8 @@ async def handle_document(msg: Message):
             await msg.reply(
                 "📄 <b>Неподдерживаемый тип файла.</b>\n\n"
                 "<b>Поддерживается только PDF-документ.</b>\n\n"
-                "💡 Для других форматов: конвертируйте файл в PDF."
+                "💡 Для других форматов: конвертируйте файл в PDF.",
+                parse_mode="HTML"
             )
             return
 
@@ -76,7 +77,8 @@ async def handle_document(msg: Message):
             enable_web_search=True
         )
         
-        result_text = f"📄 <b>Анализ файла {doc.file_name}:</b>\n\n{response_text}"
+        safe_response = escape_html(response_text or "")
+        result_text = f"📄 <b>Анализ файла {escape_html(doc.file_name or '')}:</b>\n\n{safe_response}"
         await send_long_html_message(msg, result_text)
     finally:
         if upload_task and not upload_task.done():

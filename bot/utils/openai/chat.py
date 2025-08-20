@@ -2,6 +2,7 @@
 from typing import Any, Dict, List, Tuple
 import re
 import json
+import asyncio
 from datetime import datetime, timezone, timedelta
 import openai
 
@@ -426,6 +427,7 @@ class ChatManager:
             if getattr(settings, "debug_mode", False):
                 logger.debug(f"[DEBUG] OpenAI REQUEST: {request_params}")
 
+            # Выполняем запрос с лечением кейса незакрытых tool-calls без сброса истории
             try:
                 response = await client.responses.create(**request_params)
             except openai.APITimeoutError:
@@ -448,22 +450,87 @@ class ChatManager:
                     f"• Подождите {reset_time} секунд\n"
                     f"• Упростите запрос"
                 )
-            except (openai.PermissionDeniedError, openai.BadRequestError) as e:
+            except openai.BadRequestError as e:
+                error_message = str(e)
+                # Лечим кейс: "No tool output found for function call call_..."
+                if previous_response_id and ("No tool output found for function call" in error_message or "tool output" in error_message):
+                    call_id_match = re.search(r"function call\s+(call_[A-Za-z0-9]+)", error_message)
+                    missing_call_id = call_id_match.group(1) if call_id_match else None
+                    if missing_call_id:
+                        logger.warning(f"Незакрытый tool-call {missing_call_id}. Отправляю фиктивный function_call_output и повторяю запрос.")
+                        try:
+                            close_resp = await asyncio.wait_for(
+                                client.responses.create(
+                                    model=current_model,
+                                    previous_response_id=previous_response_id,
+                                    input=[{
+                                        "type": "function_call_output",
+                                        "call_id": missing_call_id,
+                                        "output": json.dumps({"ok": False, "error": "aborted_by_system"}, ensure_ascii=False)
+                                    }],
+                                    store=True,
+                                ),
+                                timeout=12,
+                            )
+                            new_prev = getattr(close_resp, 'id', previous_response_id)
+                            request_params_retry = dict(request_params)
+                            request_params_retry["previous_response_id"] = new_prev
+                            response = await asyncio.wait_for(
+                                client.responses.create(**request_params_retry),
+                                timeout=20,
+                            )
+                        except asyncio.TimeoutError:
+                            logger.warning("Таймаут при закрытии зависшего tool-call/повторе запроса")
+                            return (
+                                "⚠️ Таймаут при закрытии зависшего вызова инструмента. "
+                                "Повторите запрос ещё раз."
+                            )
+                        except Exception as e2:
+                            logger.warning(f"Не удалось закрыть tool-call {missing_call_id}: {e2}")
+                            return (
+                                "⚠️ Предыдущий шаг ожидал вывод инструмента, из-за чего запрос не выполнен. "
+                                "Повторите запрос ещё раз."
+                            )
+                    else:
+                        logger.warning("Не удалось извлечь call_id из сообщения ошибки tool output")
+                        return (
+                            "⚠️ Контекст ожидает завершения вызова инструмента. Повторите запрос ещё раз."
+                        )
+                else:
+                    # Прочие 400: покажем расшифровку без смены модели
+                    logger.warning(f"Проблема с моделью {current_model}: {error_message}")
+                    if "does not have access" in error_message:
+                        return (
+                            f"❌ Нет доступа к модели <code>{current_model}</code>.\n"
+                            f"Попросите доступ у админа или выберите другую модель через /setmodel."
+                        )
+                    elif "not supported with the Responses API" in error_message:
+                        return (
+                            f"❌ Модель <code>{current_model}</code> не поддерживает Responses API.\n"
+                            f"Выберите совместимую модель через /setmodel."
+                        )
+                    elif "does not support image inputs" in error_message:
+                        return (
+                            f"❌ Модель <code>{current_model}</code> не поддерживает изображения.\n"
+                            f"Отправьте текстовый запрос или смените модель через /setmodel."
+                        )
+                    else:
+                        short = error_message[:200]
+                        return f"❌ Проблема с моделью <code>{current_model}</code>: {short}"
+            except openai.PermissionDeniedError as e:
                 error_message = str(e)
                 logger.warning(f"Проблема с моделью {current_model}: {error_message}")
-                from .models import ModelsManager as _MM
-                await _MM.set_current_model("gpt-4o-mini")
                 if "does not have access" in error_message:
-                    return f"❌ Нет доступа к модели {current_model}. Модель изменена на gpt-4o-mini. Повторите запрос."
-                elif "not supported with the Responses API" in error_message:
-                    return f"❌ Модель {current_model} не поддерживает Responses API. Модель изменена на gpt-4o-mini. Повторите запрос."
-                elif "does not support image inputs" in error_message:
-                    return f"❌ Модель {current_model} не поддерживает изображения. Модель изменена на gpt-4o-mini. Повторите запрос."
+                    return (
+                        f"❌ Нет доступа к модели <code>{current_model}</code>.\n"
+                        f"Попросите доступ у админа или выберите другую модель через /setmodel."
+                    )
                 else:
-                    return f"❌ Проблема с моделью {current_model}. Модель изменена на gpt-4o-mini. Повторите запрос."
+                    short = error_message[:200]
+                    return f"❌ Проблема с моделью <code>{current_model}</code>: {short}"
             except Exception as e:
                 logger.error(f"OpenAI:unexpected error: {e}")
-                return f"❌ Произошла неожиданная ошибка: {str(e)[:100]}..."
+                return f"❌ ПроизошлаUnexpected ошибка: {str(e)[:100]}..."
 
             # Первый шаг — usage/cost
             usage1 = getattr(response, "usage", None)
@@ -534,10 +601,14 @@ class ChatManager:
                 )
                 await db.commit()
 
-            # Возвращаем только ACK при наличии вызовов инструментов, чтобы не дублировать сообщения модели
-            if 'acks_total' in locals() and acks_total:
+            # Возвращаем ACK и текст ассистента вместе, если оба есть
+            if acks_total and visible_text:
+                return "\n".join(acks_total) + "\n\n" + visible_text
+            if visible_text:
+                return visible_text
+            if acks_total:
                 return "\n".join(acks_total)
-            return visible_text
+            return ""
 
     @staticmethod
     def _parse_when_to_utc(when_str: str) -> datetime | None:
