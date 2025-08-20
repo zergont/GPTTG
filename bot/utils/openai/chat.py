@@ -39,20 +39,53 @@ class ChatManager:
         return {}
 
     @staticmethod
+    def _build_meta_from_chain(chain: Dict[str, Any] | None, base_silent: bool) -> str | None:
+        if not chain or not isinstance(chain, dict):
+            return None
+        meta: Dict[str, Any] = {}
+        # steps → steps_left
+        steps = chain.get("steps")
+        if isinstance(steps, int) and steps > 0:
+            meta["steps_left"] = steps
+        # end_at — ожидается в UTC "%Y-%m-%d %H:%M:%S"
+        end_at = chain.get("end_at")
+        if isinstance(end_at, str) and end_at.strip():
+            meta["end_at"] = end_at.strip()
+        # next_at — фиксированная дата UTC
+        next_at = chain.get("next_at")
+        if isinstance(next_at, str) and next_at.strip():
+            meta["next_at"] = next_at.strip()
+        # next_offset_seconds — относительный сдвиг
+        next_offset = chain.get("next_offset_seconds")
+        if isinstance(next_offset, int) and next_offset > 0:
+            meta["next_offset"] = next_offset
+        # silent в цепочке (наследуется для следующих)
+        if "silent" in chain:
+            meta["silent"] = bool(chain.get("silent"))
+        else:
+            meta["silent"] = bool(base_silent)
+        return json.dumps(meta, ensure_ascii=False) if meta else None
+
+    @staticmethod
     async def _handle_schedule_reminder_tool(chat_id: int, user_id: int, args: Dict[str, Any]) -> Tuple[str | None, Dict[str, Any] | None]:
         when = str(args.get("when", "")).strip()
         text_val = str(args.get("text", "")).strip()
-        silent = bool(args.get("silent", False))
+        silent = args.get("silent")
+        if silent is None:
+            silent = settings.reminder_default_silent
+        silent = bool(silent)
+        chain = args.get("chain") if isinstance(args, dict) else None
         if not when or not text_val:
             return None, None
         due_at_utc = ChatManager._parse_when_to_utc(when)
         if not due_at_utc:
             return None, None
+        meta_json = ChatManager._build_meta_from_chain(chain, base_silent=silent)
         try:
             async with get_conn() as db:
                 cur = await db.execute(
-                    "INSERT INTO reminders(chat_id, user_id, text, due_at, silent, status) VALUES (?, ?, ?, ?, ?, 'scheduled')",
-                    (chat_id, user_id, text_val[:200], due_at_utc.strftime("%Y-%m-%d %H:%M:%S"), int(silent)),
+                    "INSERT INTO reminders(chat_id, user_id, text, due_at, silent, status, meta_json) VALUES (?, ?, ?, ?, ?, 'scheduled', ?)",
+                    (chat_id, user_id, text_val[:200], due_at_utc.strftime("%Y-%m-%d %H:%M:%S"), int(silent), meta_json),
                 )
                 await db.commit()
                 reminder_id = getattr(cur, 'lastrowid', None)
@@ -90,16 +123,21 @@ class ChatManager:
                     continue
                 when = str(it.get("when", "")).strip()
                 text_val = str(it.get("text", "")).strip()
-                silent = bool(it.get("silent", False))
+                silent = it.get("silent")
+                if silent is None:
+                    silent = settings.reminder_default_silent
+                silent = bool(silent)
+                chain = it.get("chain") if isinstance(it, dict) else None
                 if not when or not text_val:
                     continue
                 due_at_utc = ChatManager._parse_when_to_utc(when)
                 if not due_at_utc:
                     continue
+                meta_json = ChatManager._build_meta_from_chain(chain, base_silent=silent)
                 async with get_conn() as db:
                     cur = await db.execute(
-                        "INSERT INTO reminders(chat_id, user_id, text, due_at, silent, status) VALUES (?, ?, ?, ?, ?, 'scheduled')",
-                        (chat_id, user_id, text_val[:200], due_at_utc.strftime("%Y-%m-%d %H:%M:%S"), int(silent)),
+                        "INSERT INTO reminders(chat_id, user_id, text, due_at, silent, status, meta_json) VALUES (?, ?, ?, ?, ?, 'scheduled', ?)",
+                        (chat_id, user_id, text_val[:200], due_at_utc.strftime("%Y-%m-%d %H:%M:%S"), int(silent), meta_json),
                     )
                     await db.commit()
                     reminder_id = getattr(cur, 'lastrowid', None)
@@ -319,9 +357,9 @@ class ChatManager:
                 reminder_instr = (
                     "\n\nНапоминания: используй function-tool 'schedule_reminder' с полями "
                     "when (ISO8601 с TZ или 'in 5m/2h/1d'), text (до 200 символов), silent (true/false). "
+                    "Для последовательных цепочек добавь опциональный объект chain: {next_offset_seconds:int, next_at:'YYYY-MM-DD HH:MM:SS', steps:int, end_at:'YYYY-MM-DD HH:MM:SS', silent?:bool}. "
                     "Выбор инструментов — автоматический (tool_choice=auto): модель сама решает, когда вызывать функцию, а когда ответить текстом. "
-                    "Если пользователь просит несколько напоминаний, вызови schedule_reminder несколько раз в одном ответе первого шага (пакетом). "
-                    "Также доступен пакетный инструмент 'schedule_reminders' с массивом items[{when,text,silent?}], его можно использовать для нескольких напоминаний сразу. "
+                    "Если пользователь просит несколько напоминаний, вызови schedule_reminder несколько раз в одном ответе первого шага (пакетом) или используй пакетный инструмент. "
                     "Создавай разумное количество напоминаний и не спамь пользователя; при неопределённости уточни детали. "
                     "Не отправляй отдельные сообщения-подтверждения — бот покажет итоговые подтверждения самостоятельно."
                 )
@@ -377,22 +415,34 @@ class ChatManager:
                 tools_list.append({
                     "type": "function",
                     "name": "schedule_reminder",
-                    "description": "Schedule a one-time reminder for the user.",
+                    "description": "Schedule a one-time reminder for the user (with optional chain).",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "when": {"type": "string", "description": "When to trigger: ISO8601 with timezone or relative 'in 5m/2h/1d'"},
                             "text": {"type": "string", "description": "Short reminder text, up to 200 chars"},
-                            "silent": {"type": "boolean", "description": "Send without notification sound", "default": False}
+                            "silent": {"type": "boolean", "description": "Send without notification sound", "default": False},
+                            "chain": {
+                                "type": "object",
+                                "description": "Optional chain configuration for sequential reminders",
+                                "properties": {
+                                    "next_offset_seconds": {"type": "integer", "minimum": 1},
+                                    "next_at": {"type": "string", "description": "UTC 'YYYY-MM-DD HH:MM:SS'"},
+                                    "steps": {"type": "integer", "minimum": 1},
+                                    "end_at": {"type": "string", "description": "UTC 'YYYY-MM-DD HH:MM:SS'"},
+                                    "silent": {"type": "boolean"}
+                                },
+                                "additionalProperties": False
+                            }
                         },
-                            "required": ["when", "text"],
-                            "additionalProperties": False
-                        }
+                        "required": ["when", "text"],
+                        "additionalProperties": False
+                    }
                 })
                 tools_list.append({
                     "type": "function",
                     "name": "schedule_reminders",
-                    "description": "Schedule multiple one-time reminders in a single call.",
+                    "description": "Schedule multiple one-time reminders in a single call (each with optional chain).",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -403,7 +453,18 @@ class ChatManager:
                                     "properties": {
                                         "when": {"type": "string"},
                                         "text": {"type": "string"},
-                                        "silent": {"type": "boolean", "default": False}
+                                        "silent": {"type": "boolean", "default": False},
+                                        "chain": {
+                                            "type": "object",
+                                            "properties": {
+                                                "next_offset_seconds": {"type": "integer", "minimum": 1},
+                                                "next_at": {"type": "string"},
+                                                "steps": {"type": "integer", "minimum": 1},
+                                                "end_at": {"type": "string"},
+                                                "silent": {"type": "boolean"}
+                                            },
+                                            "additionalProperties": False
+                                        }
                                     },
                                     "required": ["when", "text"],
                                     "additionalProperties": False

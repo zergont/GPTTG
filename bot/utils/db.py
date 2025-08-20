@@ -58,6 +58,39 @@ async def _ensure_users_timezone_column():
             logger.debug(f"ensure timezone column: {e}")
 
 
+async def _ensure_reminders_columns():
+    """Гарантирует наличие новых столбцов/индексов в reminders для цепочек и идемпотентности."""
+    async with get_conn() as db:
+        try:
+            cur = await db.execute("PRAGMA table_info(reminders)")
+            cols = await cur.fetchall()
+            col_names = {c[1] for c in cols}
+            to_add = []
+            if "picked_at" not in col_names:
+                to_add.append(("picked_at", "DATETIME"))
+            if "fired_at" not in col_names:
+                to_add.append(("fired_at", "DATETIME"))
+            if "idempotency_key" not in col_names:
+                to_add.append(("idempotency_key", "TEXT"))
+            if "meta_json" not in col_names:
+                to_add.append(("meta_json", "TEXT"))
+            for name, typ in to_add:
+                try:
+                    await db.execute(f"ALTER TABLE reminders ADD COLUMN {name} {typ}")
+                except Exception as e:
+                    logger.debug(f"alter reminders add {name}: {e}")
+            # Индекс идемпотентности
+            try:
+                await db.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_idemp ON reminders(idempotency_key) WHERE idempotency_key IS NOT NULL"
+                )
+            except Exception as e:
+                logger.debug(f"create index reminders idemp: {e}")
+            await db.commit()
+        except Exception as e:
+            logger.debug(f"ensure reminders columns: {e}")
+
+
 async def init_db():
     """Применяет schema.sql ровно один раз, потокобезопасно."""
     global _schema_applied
@@ -74,8 +107,9 @@ async def init_db():
             async with get_conn() as db:
                 await db.executescript(sql_script)
                 await db.commit()
-            # Миграция столбца timezone
+            # Миграции
             await _ensure_users_timezone_column()
+            await _ensure_reminders_columns()
             _schema_applied = True
             logger.debug("↪️  Schema applied")
         except Exception as e:

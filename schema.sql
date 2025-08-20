@@ -45,20 +45,27 @@ CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage(ts);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_openai_files_chat_id ON openai_files(chat_id);
 
--- Напоминания (одноразовые)
+-- Напоминания (одноразовые, с поддержкой цепочек)
 CREATE TABLE IF NOT EXISTS reminders (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    chat_id     INTEGER NOT NULL,
-    user_id     INTEGER NOT NULL,
-    text        TEXT    NOT NULL,
-    due_at      DATETIME NOT NULL,   -- UTC
-    silent      INTEGER DEFAULT 0,   -- 0/1
-    status      TEXT    DEFAULT 'scheduled',
-    executed_at DATETIME,
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id          INTEGER NOT NULL,
+    user_id          INTEGER NOT NULL,
+    text             TEXT    NOT NULL,
+    due_at           DATETIME NOT NULL,   -- UTC
+    silent           INTEGER DEFAULT 0,   -- 0/1
+    status           TEXT    DEFAULT 'scheduled',
+    executed_at      DATETIME,
+    created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    -- служебные поля для воркера и цепочек
+    picked_at        DATETIME,            -- когда задача взята воркером
+    fired_at         DATETIME,            -- когда сообщение фактически отправлено
+    idempotency_key  TEXT,                -- ключ для защиты от повторной отправки
+    meta_json        TEXT                 -- JSON: {next_offset, next_at, steps_left, end_at, silent, ...}
 );
 CREATE INDEX IF NOT EXISTS idx_reminders_due_status ON reminders(status, due_at);
 CREATE INDEX IF NOT EXISTS idx_reminders_chat ON reminders(chat_id);
+-- частичный уникальный индекс по идемпотентности (если ключ установлен)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_idemp ON reminders(idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 -- Вставляем дефолтную модель
 INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('current_model', 'gpt-4o-mini');

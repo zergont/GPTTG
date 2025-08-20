@@ -5,12 +5,13 @@ import sys
 import re
 from pathlib import Path
 
+
 def get_version_from_pyproject():
     """Читает версию из pyproject.toml без toml пакета."""
     pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
     if not pyproject_path.exists():
         return "unknown"
-    
+
     try:
         content = pyproject_path.read_text(encoding='utf-8')
         # Улучшенная регулярка для более точного поиска
@@ -28,6 +29,34 @@ _platform = platform.system().lower()
 IS_WINDOWS = _platform == 'windows'
 IS_LINUX = _platform == 'linux'
 IS_DEVELOPMENT = os.path.exists('.git') and not os.path.exists('/etc/systemd')
+
+
+def _parse_duration_to_seconds(val: str, default_seconds: int) -> int:
+    """Парсит длительность вида '10s', '2m', '1h' в секунды. Поддерживаются s/m/h.
+    Если парсинг не удался — возвращает default_seconds.
+    """
+    try:
+        s = (val or "").strip().lower()
+        if not s:
+            return default_seconds
+        # Если чисто число — считаем секундами
+        if s.isdigit():
+            return int(s)
+        m = re.match(r"^(\d+)\s*([smh])$", s)
+        if not m:
+            return default_seconds
+        num = int(m.group(1))
+        unit = m.group(2)
+        if unit == 's':
+            return num
+        if unit == 'm':
+            return num * 60
+        if unit == 'h':
+            return num * 3600
+        return default_seconds
+    except Exception:
+        return default_seconds
+
 
 @dataclass(frozen=True, slots=True)
 class Settings:
@@ -50,17 +79,24 @@ class Settings:
     openai_timeout_seconds: int
     openai_max_retries: int
     openai_global_concurrency: int
+    # Напоминания
+    reminder_poll_interval_seconds: int
+    reminder_batch_limit: int
+    reminder_lookahead_seconds: int
+    reminder_jitter_seconds: int
+    reminder_default_silent: bool
+
 
 def create_settings():
     """Создает объект настроек после проверки всех зависимостей."""
-    
+
     platform_info = f" ({_platform}{'|dev' if IS_DEVELOPMENT else '|prod'})"
     print(f"GPTTG Telegram Bot v{VERSION}{platform_info}")
 
     # --- Проверка необходимых пакетов ---
     REQUIRED_PACKAGES = [
         "aiogram",
-        "aiohttp", 
+        "aiohttp",
         "openai",
         "backoff",
         "python_dotenv",
@@ -131,7 +167,7 @@ def create_settings():
     # --- Оптимизированная загрузка переменных окружения ---
     REQUIRED_ENV_VARS = [
         "BOT_TOKEN",
-        "OPENAI_API_KEY", 
+        "OPENAI_API_KEY",
         "ADMIN_ID",
     ]
     OPTIONAL_ENV_VARS = [
@@ -145,6 +181,12 @@ def create_settings():
         ("OPENAI_TIMEOUT_SECONDS", "180"),
         ("OPENAI_MAX_RETRIES", "0"),
         ("OPENAI_GLOBAL_CONCURRENCY", "4"),
+        # Напоминания
+        ("REMINDER_POLL_INTERVAL", "10s"),
+        ("REMINDER_BATCH_LIMIT", "50"),
+        ("REMINDER_LOOKAHEAD", "2s"),
+        ("REMINDER_JITTER", "2s"),
+        ("REMINDER_DEFAULT_SILENT", "1"),
     ]
 
     env_values = {}
@@ -184,6 +226,12 @@ def create_settings():
         openai_timeout_seconds=int(env_values["OPENAI_TIMEOUT_SECONDS"]),
         openai_max_retries=int(env_values["OPENAI_MAX_RETRIES"]),
         openai_global_concurrency=int(env_values["OPENAI_GLOBAL_CONCURRENCY"]),
+        # Напоминания
+        reminder_poll_interval_seconds=_parse_duration_to_seconds(env_values["REMINDER_POLL_INTERVAL"], 10),
+        reminder_batch_limit=int(env_values["REMINDER_BATCH_LIMIT"]),
+        reminder_lookahead_seconds=_parse_duration_to_seconds(env_values["REMINDER_LOOKAHEAD"], 2),
+        reminder_jitter_seconds=_parse_duration_to_seconds(env_values["REMINDER_JITTER"], 2),
+        reminder_default_silent=bool(int(env_values["REMINDER_DEFAULT_SILENT"])),
     )
 
 # Создаем настройки только при импорте модуля
