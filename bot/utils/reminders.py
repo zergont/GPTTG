@@ -244,6 +244,196 @@ async def _handle_one(bot: Bot, r: Reminder) -> None:
                 pass
 
 
+# ------------------------
+# Self-calls (assistant scheduled self messages)
+# ------------------------
+
+@dataclass
+class SelfCall:
+    id: int
+    chat_id: int
+    user_id: int
+    due_at: str  # UTC '%Y-%m-%d %H:%M:%S'
+    topic: Optional[str]
+    payload_json: Optional[str]
+
+
+async def _self_fetch_due(limit: int) -> List[SelfCall]:
+    now = datetime.now(timezone.utc)
+    now_plus = now + timedelta(seconds=settings.reminder_lookahead_seconds)
+    stale_limit = (now - timedelta(seconds=STALE_PICK_SECONDS)).strftime("%Y-%m-%d %H:%M:%S")
+    now_plus_str = now_plus.strftime("%Y-%m-%d %H:%M:%S")
+    async with get_conn() as db:
+        cur = await db.execute(
+            """
+            SELECT id, chat_id, user_id, due_at, topic, payload_json
+              FROM self_calls
+             WHERE status='scheduled'
+               AND due_at <= ?
+               AND (picked_at IS NULL OR picked_at <= ?)
+             ORDER BY due_at ASC
+             LIMIT ?
+            """,
+            (now_plus_str, stale_limit, limit),
+        )
+        rows = await cur.fetchall()
+    return [SelfCall(id=r[0], chat_id=r[1], user_id=r[2], due_at=r[3], topic=r[4], payload_json=r[5]) for r in rows]
+
+
+async def _self_claim(id_: int) -> bool:
+    async with get_conn() as db:
+        await db.execute(
+            """
+            UPDATE self_calls
+               SET picked_at=CURRENT_TIMESTAMP
+             WHERE id=? AND (picked_at IS NULL OR picked_at <= DATETIME('now', ?))
+            """,
+            (id_, f'-{STALE_PICK_SECONDS} seconds'),
+        )
+        await db.commit()
+        cur = await db.execute("SELECT picked_at FROM self_calls WHERE id=?", (id_,))
+        row = await cur.fetchone()
+        return bool(row and row[0])
+
+
+async def _self_mark_status(id_: int, status: str) -> None:
+    async with get_conn() as db:
+        if status == 'done':
+            await db.execute(
+                "UPDATE self_calls SET status='done', executed_at=CURRENT_TIMESTAMP, fired_at=CURRENT_TIMESTAMP WHERE id=?",
+                (id_,),
+            )
+        else:
+            await db.execute(
+                "UPDATE self_calls SET status=?, executed_at=CURRENT_TIMESTAMP WHERE id=?",
+                (status, id_),
+            )
+        await db.commit()
+
+
+def _extract_next_self_call(text: str) -> Optional[Tuple[datetime, Optional[str], Optional[dict]]]:
+    """Парсит из ответа ассистента инструкцию следующего самовызова.
+    Формат: в конце сообщения отдельной строкой JSON-маркер: 
+    <!--self_call:{"in":"5m","topic":"forex","payload":{...}}-->
+    Либо абсолютное время: {"at":"2025-08-20 12:00:00"} (UTC)
+    """
+    try:
+        marker_start = text.rfind("<!--self_call:")
+        if marker_start == -1:
+            return None
+        marker_end = text.find("-->", marker_start)
+        if marker_end == -1:
+            return None
+        payload = text[marker_start + len("<!--self_call:"):marker_end].strip()
+        obj = json.loads(payload)
+        when = obj.get("in") or obj.get("at")
+        topic = obj.get("topic")
+        payload_obj = obj.get("payload") if isinstance(obj.get("payload"), dict) else None
+        if not when:
+            return None
+        if isinstance(when, str) and when.lower().startswith("in "):
+            # относительное "in 5m/2h/1d"
+            total_seconds = 0
+            for amount, unit in re.findall(r"(\d+)\s*([smhd])", when.lower()):
+                v = int(amount)
+                if unit == 's':
+                    total_seconds += v
+                elif unit == 'm':
+                    total_seconds += v * 60
+                elif unit == 'h':
+                    total_seconds += v * 3600
+                elif unit == 'd':
+                    total_seconds += v * 86400
+            if total_seconds <= 0:
+                return None
+            due = datetime.now(timezone.utc) + timedelta(seconds=total_seconds)
+        else:
+            # абсолют UTC 'YYYY-MM-DD HH:MM:SS'
+            try:
+                due = datetime.strptime(str(when), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            except Exception:
+                return None
+        return due, topic, payload_obj
+    except Exception:
+        return None
+
+
+async def _self_handle_one(bot: Bot, sc: SelfCall) -> None:
+    try:
+        if not await _self_claim(sc.id):
+            return
+        # Формируем запрос к модели: тема + произвольный payload
+        instr = (
+            "Это отложенный самовызов ассистента. Сформируй одно содержательное сообщение для пользователя по теме, "
+            "которую ты считаешь актуальной на текущий момент на основе контекста темы/пейлоада. Ты можешь свободно вести беседу. "
+            "Если хочешь продолжить беседу позже, добавь в конце сообщения JSON-маркер в HTML-комментарии, например: \n"
+            "<!--self_call:{\"in\":\"in 30m\",\"topic\":\"forex\"}}-->" 
+        )
+        payload_text = sc.payload_json or "{}"
+        content = [{
+            "type": "message",
+            "role": "user",
+            "content": f"{instr}\n\nТема: {sc.topic or '-'}\nPayload: {payload_text}"
+        }]
+        # Берём previous_response_id из истории
+        prev_id = None
+        async with get_conn() as db:
+            cur = await db.execute("SELECT last_response FROM chat_history WHERE chat_id=?", (sc.chat_id,))
+            row = await cur.fetchone()
+            prev_id = row[0] if row else None
+        text = await OpenAIClient.responses_request(
+            sc.chat_id, sc.user_id, content, previous_response_id=prev_id, enable_web_search=True, include_reminder_tools=False
+        )
+        await bot.send_message(sc.chat_id, text)
+        await _self_mark_status(sc.id, 'done')
+        # Спарсить следующий самовызов
+        nxt = _extract_next_self_call(text)
+        if nxt:
+            due, topic, payload = nxt
+            async with get_conn() as db:
+                await db.execute(
+                    "INSERT INTO self_calls(chat_id, user_id, due_at, topic, payload_json, status) VALUES(?,?,?,?,?, 'scheduled')",
+                    (sc.chat_id, sc.user_id, due.strftime("%Y-%m-%d %H:%M:%S"), topic, json.dumps(payload or {}, ensure_ascii=False)),
+                )
+                await db.commit()
+            logger.info(f"[self_calls] scheduled next for chat={sc.chat_id} at {due}")
+    except Exception as e:
+        logger.warning(f"self_call {sc.id} handling failed: {e}")
+        try:
+            await _self_mark_status(sc.id, 'error')
+        except Exception:
+            pass
+
+
+def start_self_calls_scheduler(bot: Bot) -> asyncio.Task:
+    stop_event = asyncio.Event()
+
+    async def _loop():
+        logger.info("🤖 Self-calls scheduler started")
+        try:
+            while not stop_event.is_set():
+                try:
+                    due = await _self_fetch_due(limit=max(1, settings.reminder_batch_limit))
+                    for sc in due:
+                        await _self_handle_one(bot, sc)
+                except Exception as e:
+                    logger.debug(f"self_calls loop warn: {e}")
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=float(settings.reminder_poll_interval_seconds))
+                except asyncio.TimeoutError:
+                    pass
+        finally:
+            logger.info("⏹ Self-calls scheduler stopped")
+
+    task = asyncio.create_task(_loop(), name="self_calls_scheduler")
+    setattr(task, "_gpttg_stop_event", stop_event)
+    return task
+
+
+# ------------------------
+# Reminders scheduler main entry
+# ------------------------
+
 def start_reminders_scheduler(bot: Bot) -> asyncio.Task:
     stop_event = asyncio.Event()
 

@@ -79,16 +79,58 @@ async def _ensure_reminders_columns():
                     await db.execute(f"ALTER TABLE reminders ADD COLUMN {name} {typ}")
                 except Exception as e:
                     logger.debug(f"alter reminders add {name}: {e}")
-            # Индекс идемпотентности
+            # Перечитаем список колонок после ALTER
+            cur = await db.execute("PRAGMA table_info(reminders)")
+            cols2 = await cur.fetchall()
+            col_names2 = {c[1] for c in cols2}
+            # Индексы по reminders
             try:
-                await db.execute(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_idemp ON reminders(idempotency_key) WHERE idempotency_key IS NOT NULL"
-                )
-            except Exception as e:
-                logger.debug(f"create index reminders idemp: {e}")
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_reminders_due_status ON reminders(status, due_at)")
+            except Exception:
+                pass
+            try:
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_reminders_chat ON reminders(chat_id)")
+            except Exception:
+                pass
+            # Индекс идемпотентности (создаём только если есть столбец)
+            if "idempotency_key" in col_names2:
+                try:
+                    await db.execute(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_idemp ON reminders(idempotency_key) WHERE idempotency_key IS NOT NULL"
+                    )
+                except Exception as e:
+                    logger.debug(f"create index reminders idemp: {e}")
             await db.commit()
         except Exception as e:
             logger.debug(f"ensure reminders columns: {e}")
+
+
+async def _ensure_self_calls_table():
+    """Создаёт таблицу self_calls для самовызовов ассистента, если её нет."""
+    async with get_conn() as db:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS self_calls (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id         INTEGER NOT NULL,
+                    user_id         INTEGER NOT NULL,
+                    due_at          DATETIME NOT NULL,   -- UTC
+                    topic           TEXT,
+                    payload_json    TEXT,
+                    status          TEXT DEFAULT 'scheduled',
+                    picked_at       DATETIME,
+                    fired_at        DATETIME,
+                    executed_at     DATETIME,
+                    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_self_calls_due_status ON self_calls(status, due_at)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_self_calls_chat ON self_calls(chat_id)")
+            await db.commit()
+        except Exception as e:
+            logger.debug(f"ensure self_calls table: {e}")
 
 
 async def init_db():
@@ -110,6 +152,7 @@ async def init_db():
             # Миграции
             await _ensure_users_timezone_column()
             await _ensure_reminders_columns()
+            await _ensure_self_calls_table()
             _schema_applied = True
             logger.debug("↪️  Schema applied")
         except Exception as e:

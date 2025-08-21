@@ -64,8 +64,6 @@ CREATE TABLE IF NOT EXISTS reminders (
 );
 CREATE INDEX IF NOT EXISTS idx_reminders_due_status ON reminders(status, due_at);
 CREATE INDEX IF NOT EXISTS idx_reminders_chat ON reminders(chat_id);
--- частичный уникальный индекс по идемпотентности (если ключ установлен)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_idemp ON reminders(idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 -- Вставляем дефолтную модель
 INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('current_model', 'gpt-4o-mini');

@@ -7,6 +7,11 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
 import asyncio
+from aiogram.filters import Command
+from aiogram.enums import ParseMode
+from datetime import datetime, timezone, timedelta
+import re
+import json
 
 from pathlib import Path
 
@@ -16,7 +21,7 @@ from bot.utils.openai import OpenAIClient
 from bot.utils.db import get_conn, get_user_display_name
 from bot.utils.progress import show_progress_indicator
 from bot.utils.html import send_long_html_message
-from bot.utils.errors import error_handler
+from bot.utils.errors import ErrorHandler
 
 router = Router()
 
@@ -84,7 +89,7 @@ async def cmd_help(msg: Message):
 
 # ——— /pricing (админ) —————————————————————————————————————————— #
 @router.message(F.text == "/pricing")
-@error_handler("pricing_command")
+@ErrorHandler.error_handler("pricing_command")
 async def cmd_pricing(msg: Message):
     if msg.from_user.id != settings.admin_id:
         return
@@ -248,7 +253,7 @@ async def cmd_status(msg: Message):
 
 # ——— /models (админ) —————————————————————————————————————————— #
 @router.message(F.text == "/models")
-@error_handler("models_command")
+@ErrorHandler.error_handler("models_command")
 async def cmd_models(msg: Message):
     """Показывает доступные модели (только для админа)."""
     if msg.from_user.id != settings.admin_id:
@@ -275,7 +280,7 @@ async def cmd_models(msg: Message):
 
 # ——— /setmodel (админ) —————————————————————————————————————————— #
 @router.message(F.text == "/setmodel")
-@error_handler("setmodel_command")
+@ErrorHandler.error_handler("setmodel_command")
 async def cmd_setmodel(msg: Message):
     """Показывает inline клавиатуру для выбора модели (только для админа)."""
     if msg.from_user.id != settings.admin_id:
@@ -304,7 +309,7 @@ async def cmd_setmodel(msg: Message):
 
 # ——— Callback для смены модели —————————————————————————————————————————— #
 @router.callback_query(lambda c: c.data and c.data.startswith("setmodel:"))
-@error_handler("setmodel_callback")
+@ErrorHandler.error_handler("setmodel_callback")
 async def callback_setmodel(callback: CallbackQuery):
     """Обрабатывает выбор модели через inline кнопку."""
     if callback.from_user.id != settings.admin_id:
@@ -463,7 +468,7 @@ async def imggen_get_prompt(msg: Message, state: FSMContext):
 
 
 @router.callback_query(ImgGenStates.waiting_for_format)
-@error_handler("img_generation")
+@ErrorHandler.error_handler("img_generation")
 async def imggen_get_format(callback: CallbackQuery, state: FSMContext):
     """Получаем формат, генерируем картинку."""
     # Проверяем, если пользователь нажал отмену
@@ -525,7 +530,7 @@ async def cmd_cancel(msg: Message, state: FSMContext):
 
 # ——— /checkmodel (админ) —————————————————————————————————————————— #
 @router.message(F.text == "/checkmodel")
-@error_handler("checkmodel_command")
+@ErrorHandler.error_handler("checkmodel_command")
 async def cmd_checkmodel(msg: Message):
     """Проверяет текущую модель (только для админа)."""
     if msg.from_user.id != settings.admin_id:
@@ -569,7 +574,7 @@ async def cmd_checkmodel(msg: Message):
 
 # ——— /limits (админ) —————————————————————————————————————————— #
 @router.message(F.text == "/limits")
-@error_handler("limits_command")
+@ErrorHandler.error_handler("limits_command")
 async def cmd_limits(msg: Message):
     """Показывает информацию о rate limits (только для админа)."""
     if msg.from_user.id != settings.admin_id:
@@ -617,3 +622,53 @@ async def cmd_limits(msg: Message):
     )
     
     await send_long_html_message(msg, response_text)
+
+
+# ——— /selfcall_in —————————————————————————————————————————— #
+@router.message(Command("selfcall_in"))
+async def cmd_selfcall_in(message: Message):
+    """/selfcall_in 10m [topic] - создаёт самовызов через относительный интервал."""
+    args = (message.text or "").split(maxsplit=2)
+    if len(args) < 2:
+        await message.answer("Использование: /selfcall_in 10m [topic]")
+        return
+    span = args[1]
+    topic = args[2] if len(args) > 2 else None
+    total = 0
+    for amount, unit in re.findall(r"(\d+)\s*([smhd])", span.lower()):
+        v = int(amount)
+        total += v if unit == 's' else v*60 if unit == 'm' else v*3600 if unit == 'h' else v*86400
+    if total <= 0:
+        await message.answer("Неверный интервал")
+        return
+    due = datetime.now(timezone.utc) + timedelta(seconds=total)
+    async with get_conn() as db:
+        await db.execute(
+            "INSERT INTO self_calls(chat_id, user_id, due_at, topic, payload_json, status) VALUES(?,?,?,?,?, 'scheduled')",
+            (message.chat.id, message.from_user.id, due.strftime("%Y-%m-%d %H:%M:%S"), topic, json.dumps({}, ensure_ascii=False)),
+        )
+        await db.commit()
+    await message.answer(f"Самовызов запланирован через {span}")
+
+
+# ——— /selfcall_at —————————————————————————————————————————— #
+@router.message(Command("selfcall_at"))
+async def cmd_selfcall_at(message: Message):
+    """/selfcall_at 2025-08-20 12:00:00 [topic] - создаёт самовызов на точное время (UTC)."""
+    args = (message.text or "").split(maxsplit=2)
+    if len(args) < 2:
+        await message.answer("Использование: /selfcall_at YYYY-MM-DD HH:MM:SS [topic]")
+        return
+    try:
+        due = datetime.strptime(args[1], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except Exception:
+        await message.answer("Неверный формат времени. Ожидается YYYY-MM-DD HH:MM:SS (UTC)")
+        return
+    topic = args[2] if len(args) > 2 else None
+    async with get_conn() as db:
+        await db.execute(
+            "INSERT INTO self_calls(chat_id, user_id, due_at, topic, payload_json, status) VALUES(?,?,?,?,?, 'scheduled')",
+            (message.chat.id, message.from_user.id, due.strftime("%Y-%m-%d %H:%M:%S"), topic, json.dumps({}, ensure_ascii=False)),
+        )
+        await db.commit()
+    await message.answer(f"Самовызов запланирован на {args[1]} UTC")

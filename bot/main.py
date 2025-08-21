@@ -15,7 +15,7 @@ from bot.middlewares import UserMiddleware, ErrorMiddleware
 from bot import router
 from bot.utils.log import logger
 from bot.utils.http_client import close_session
-from bot.utils.reminders import start_reminders_scheduler
+from bot.utils.reminders import start_reminders_scheduler, start_self_calls_scheduler
 
 # Путь к lock-файлу для single-instance
 LOCK_PATH = Path(__file__).parent.parent / "gpttg-bot.lock"
@@ -112,18 +112,20 @@ async def main():
 
     logger.info(f"🚀 Запуск GPTTG бота версии {VERSION}")
 
-    # Запускаем планировщик напоминаний в фоне
+    # Запускаем планировщики в фоне
     reminders_task = start_reminders_scheduler(bot)
+    self_calls_task = start_self_calls_scheduler(bot)
 
     try:
         await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
     finally:
-        # Останавливаем планировщик
+        # Останавливаем планировщики
         try:
-            stop_event = getattr(reminders_task, "_gpttg_stop_event", None)
-            if stop_event is not None:
-                stop_event.set()
-            reminders_task.cancel()
+            for t in (reminders_task, self_calls_task):
+                stop_event = getattr(t, "_gpttg_stop_event", None)
+                if stop_event is not None:
+                    stop_event.set()
+                t.cancel()
         except Exception:
             pass
         await close_session()

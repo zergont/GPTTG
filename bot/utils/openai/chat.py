@@ -13,6 +13,10 @@ from .base import client, oai_limiter
 from .models import ModelsManager
 from bot.utils.http_client import get_session  # may still be used elsewhere
 from bot.utils.datetime_context import utc_to_user_local
+from bot.utils.prompts import (
+    build_initial_system_prompt,
+    build_per_request_system_prompt,
+)
 
 
 class ChatManager:
@@ -347,37 +351,14 @@ class ChatManager:
 
             input_content: List[Dict[str, Any]] = []
 
-            tz_intro = (
-                "По умолчанию предполагай часовой пояс пользователя Europe/Moscow. "
-                "Если видишь в диалоге явные признаки другого пояса (город, текущее время, GMT±X) — уточни и установи через tool set_timezone. "
-                "Спрашивай про город или текущее время только один раз при первом общении, не злоупотребляй напоминаниями."
-            )
-
-            if include_reminder_tools:
-                reminder_instr = (
-                    "\n\nНапоминания: используй function-tool 'schedule_reminder' с полями "
-                    "when (ISO8601 с TZ или 'in 5m/2h/1d'), text (до 200 символов), silent (true/false). "
-                    "Для последовательных цепочек добавь опциональный объект chain: {next_offset_seconds:int, next_at:'YYYY-MM-DD HH:MM:SS', steps:int, end_at:'YYYY-MM-DD HH:MM:SS', silent?:bool}. "
-                    "Выбор инструментов — автоматический (tool_choice=auto): модель сама решает, когда вызывать функцию, а когда ответить текстом. "
-                    "Если пользователь просит несколько напоминаний, вызови schedule_reminder несколько раз в одном ответе первого шага (пакетом) или используй пакетный инструмент. "
-                    "Создавай разумное количество напоминаний и не спамь пользователя; при неопределённости уточни детали. "
-                    "Не отправляй отдельные сообщения-подтверждения — бот покажет итоговые подтверждения самостоятельно."
-                )
-            else:
-                reminder_instr = (
-                    "\n\nЭто уведомление по уже установленному напоминанию. "
-                    "Сформируй одно короткое понятное уведомление для пользователя без лишних вступлений. "
-                    "Не предлагай ставить новые напоминания и не вызывай инструментов напоминаний."
-                )
-
-            sys_text = f"{settings.system_prompt}\n\n{tz_intro}{reminder_instr}"
+            sys_text = build_initial_system_prompt(include_reminder_tools)
 
             if previous_response_id is None:
                 input_content.append({"type": "message", "content": sys_text, "role": "system"})
             else:
                 input_content.append({
                     "type": "message",
-                    "content": tz_intro + (" Для напоминаний используй schedule_reminder/schedule_reminders." if include_reminder_tools else ""),
+                    "content": build_per_request_system_prompt(include_reminder_tools),
                     "role": "system",
                 })
 
@@ -496,24 +477,124 @@ class ChatManager:
                 return "⏳ Превышено время ожидания ответа. Попробуйте еще раз."
             except openai.RateLimitError as e:
                 logger.error("OpenAI: превышен лимит запросов")
-                remaining_tokens = "неизвестно"
-                reset_time = "неизвестно"
-                if hasattr(e, 'response') and e.response:
-                    headers = getattr(e.response, 'headers', {})
-                    remaining_tokens = headers.get('x-ratelimit-remaining-tokens', 'неизвестно')
-                    reset_time = headers.get('x-ratelimit-reset-tokens', 'неизвестно')
-                return (
-                    f"⏳ <b>Превышен лимит токенов OpenAI</b>\n\n"
-                    f"🔢 Осталось токенов: <code>{remaining_tokens}</code>\n"
-                    f"🕒 Сброс через: <code>{reset_time}</code> сек\n\n"
-                    f"💡 Рекомендации:\n"
-                    f"• /setmodel → gpt-4o-mini (дешевле)\n"
-                    f"• Подождите {reset_time} секунд\n"
-                    f"• Упростите запрос"
-                )
+                # Попробуем аккуратно извлечь заголовки и тело ответа
+                remaining_tokens = None
+                reset_tokens_sec: str | None = None
+                remaining_req = None
+                reset_req_sec: str | None = None
+                retry_after_sec: str | None = None
+
+                resp = getattr(e, 'response', None)
+                headers = {}
+                if resp is not None and hasattr(resp, 'headers') and resp.headers:
+                    headers = {str(k).lower(): str(v) for k, v in dict(resp.headers).items()}
+                if not headers and hasattr(e, 'headers') and e.headers:
+                    headers = {str(k).lower(): str(v) for k, v in dict(e.headers).items()}
+
+                def _to_seconds(v: str) -> int | None:
+                    if not v:
+                        return None
+                    s = v.strip().lower()
+                    if s.isdigit():
+                        try:
+                            return int(s)
+                        except Exception:
+                            return None
+                    m = re.match(r"^(\d+)(ms|s)$", s)
+                    if m:
+                        num = int(m.group(1))
+                        unit = m.group(2)
+                        return num if unit == 's' else max(1, (num + 999) // 1000)
+                    try:
+                        dt = datetime.fromisoformat(s.replace('z', '+00:00'))
+                        now = datetime.now(timezone.utc)
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        delta = (dt - now).total_seconds()
+                        return max(0, int(delta))
+                    except Exception:
+                        pass
+                    try:
+                        iv = int(float(s))
+                        now = int(datetime.now(timezone.utc).timestamp())
+                        return max(0, iv - now) if iv > now else iv
+                    except Exception:
+                        return None
+
+                try:
+                    remaining_tokens = headers.get('x-ratelimit-remaining-tokens')
+                    reset_tokens_sec_val = _to_seconds(headers.get('x-ratelimit-reset-tokens', ''))
+                    reset_tokens_sec = str(reset_tokens_sec_val) if reset_tokens_sec_val is not None else None
+                    remaining_req = headers.get('x-ratelimit-remaining-requests')
+                    reset_req_sec_val = _to_seconds(headers.get('x-ratelimit-reset-requests', ''))
+                    reset_req_sec = str(reset_req_sec_val) if reset_req_sec_val is not None else None
+                    retry_after_sec_val = _to_seconds(headers.get('retry-after', ''))
+                    retry_after_sec = str(retry_after_sec_val) if retry_after_sec_val is not None else None
+                except Exception:
+                    pass
+
+                # Если заголовков нет, попробуем тело ответа
+                if resp is not None and (retry_after_sec is None and reset_tokens_sec is None and reset_req_sec is None):
+                    try:
+                        data = resp.json()
+                    except Exception:
+                        data = None
+                    # Популярные варианты полей
+                    candidates = []
+                    if isinstance(data, dict):
+                        err = data.get('error') if isinstance(data.get('error'), dict) else {}
+                        # Прямые поля
+                        candidates.extend([
+                            data.get('retry_after'),
+                            data.get('rate_limit_reset'),
+                            err.get('retry_after') if isinstance(err, dict) else None,
+                            err.get('rate_limit_reset') if isinstance(err, dict) else None,
+                        ])
+                        # Попробуем выдрать секунды из error.message
+                        msg = err.get('message') if isinstance(err, dict) else None
+                        if isinstance(msg, str):
+                            m = re.search(r"(\d+)\s*(?:seconds|second|сек|s)\b", msg.lower())
+                            if m:
+                                candidates.append(m.group(1))
+                    # Конвертируем первого удачного кандидата в секунды
+                    for c in candidates:
+                        if c is None:
+                            continue
+                        try:
+                            sec_val = _to_seconds(str(c))
+                            if sec_val is not None:
+                                retry_after_sec = str(sec_val)
+                                break
+                        except Exception:
+                            continue
+
+                title = "⏳ <b>Превышен лимит OpenAI</b>"
+                info_lines: List[str] = []
+                if remaining_tokens is not None or reset_tokens_sec is not None:
+                    info_lines.append(f"🔢 Осталось токенов: <code>{remaining_tokens or '0'}</code>")
+                    if reset_tokens_sec is not None:
+                        info_lines.append(f"🕒 Сброс токенов через: <code>{reset_tokens_sec}</code> сек")
+                if remaining_req is not None or reset_req_sec is not None:
+                    info_lines.append(f"📨 Осталось запросов: <code>{remaining_req or '0'}</code>")
+                    if reset_req_sec is not None:
+                        info_lines.append(f"🕒 Сброс запросов через: <code>{reset_req_sec}</code> сек")
+                wait_hint = retry_after_sec or reset_tokens_sec or reset_req_sec
+                if not info_lines and wait_hint:
+                    info_lines.append(f"🕒 Повторите через: <code>{wait_hint}</code> сек")
+
+                lines: List[str] = [title]
+                if info_lines:
+                    lines.append("")
+                    lines.extend(info_lines)
+                lines.append("")
+                lines.append("💡 Рекомендации:")
+                lines.append("• /setmodel → gpt-4o-mini (дешевле)")
+                lines.append(f"• Подождите {wait_hint or 'несколько'} секунд")
+                lines.append("• Упростите запрос")
+                return "\n".join(lines)
             except openai.BadRequestError as e:
                 error_message = str(e)
-                # Лечим кейс: "No tool output found for function call call_..."
+                # Лечим кейс: "No tool output found for function call call..."
                 if previous_response_id and ("No tool output found for function call" in error_message or "tool output" in error_message):
                     call_id_match = re.search(r"function call\s+(call_[A-Za-z0-9]+)", error_message)
                     missing_call_id = call_id_match.group(1) if call_id_match else None
