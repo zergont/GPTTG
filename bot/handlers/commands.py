@@ -18,10 +18,11 @@ from pathlib import Path
 from bot.config import settings, VERSION
 from bot.keyboards import main_kb
 from bot.utils.openai import OpenAIClient
-from bot.utils.db import get_conn, get_user_display_name
+from bot.utils.db import get_conn, get_user_display_name, get_user_timezone
 from bot.utils.progress import show_progress_indicator
-from bot.utils.html import send_long_html_message
+from bot.utils.html import send_long_html_message, escape_html
 from bot.utils.errors import ErrorHandler
+from bot.utils.datetime_context import utc_to_user_local
 
 router = Router()
 
@@ -67,6 +68,7 @@ async def cmd_help(msg: Message):
         "/cancel — отменить текущую операцию",
         "/reset — очистить историю контекста",
         "/stats — показать личные расходы",
+        "/reminders — ваши запланированные напоминания",
     ]
     
     if msg.from_user.id == settings.admin_id:
@@ -348,6 +350,85 @@ async def cmd_reset(msg: Message, state: FSMContext):
         await db.commit()
     await msg.answer("🗑 История, файлы и все напоминания очищены! Следующий запрос начнет новый диалог.", 
                     reply_markup=main_kb(msg.from_user.id == settings.admin_id))
+
+
+# ——— /reminders —————————————————————————————————————————— #
+async def _render_reminders_list(chat_id: int, user_id: int) -> tuple[str, InlineKeyboardMarkup | None]:
+    tz = await get_user_timezone(user_id)
+    lines = ["⏰ <b>Ваши запланированные напоминания</b>", ""]
+    async with get_conn() as db:
+        cur = await db.execute(
+            """
+            SELECT id, text, due_at, silent
+              FROM reminders
+             WHERE chat_id=? AND user_id=? AND status='scheduled'
+             ORDER BY due_at ASC
+             LIMIT 50
+            """,
+            (chat_id, user_id),
+        )
+        rows = await cur.fetchall()
+    if not rows:
+        return ("⏰ У вас нет запланированных напоминаний.", None)
+    kb = InlineKeyboardMarkup(inline_keyboard=[])
+    for r in rows:
+        rid, text, due_utc, silent = r
+        due_local = utc_to_user_local(str(due_utc), tz)
+        lines.append(f"• <code>{rid}</code> — {due_local} — {escape_html(str(text))}")
+        # Кнопка удаления для каждого
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(text=f"🗑 {rid}", callback_data=f"remdel:{rid}")
+        ])
+    # Кнопка удалить все
+    kb.inline_keyboard.append([InlineKeyboardButton(text="Удалить все", callback_data="remdelall")])
+    return ("\n".join(lines), kb)
+
+
+@router.message(F.text == "/reminders")
+@ErrorHandler.error_handler("reminders_list")
+async def cmd_reminders(msg: Message):
+    text, kb = await _render_reminders_list(msg.chat.id, msg.from_user.id)
+    await msg.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("remdel:"))
+@ErrorHandler.error_handler("reminders_delete_one")
+async def cb_remdel(callback: CallbackQuery):
+    try:
+        rid = int(callback.data.split(":", 1)[1])
+    except Exception:
+        await callback.answer("Некорректный ID", show_alert=True)
+        return
+    async with get_conn() as db:
+        await db.execute(
+            "DELETE FROM reminders WHERE id=? AND chat_id=? AND user_id=? AND status='scheduled'",
+            (rid, callback.message.chat.id, callback.from_user.id),
+        )
+        await db.commit()
+    await callback.answer("Удалено")
+    # Перерисуем список
+    text, kb = await _render_reminders_list(callback.message.chat.id, callback.from_user.id)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(lambda c: c.data == "remdelall")
+@ErrorHandler.error_handler("reminders_delete_all")
+async def cb_remdel_all(callback: CallbackQuery):
+    async with get_conn() as db:
+        await db.execute(
+            "DELETE FROM reminders WHERE chat_id=? AND user_id=? AND status='scheduled'",
+            (callback.message.chat.id, callback.from_user.id),
+        )
+        await db.commit()
+    await callback.answer("Все напоминания удалены")
+    text, kb = await _render_reminders_list(callback.message.chat.id, callback.from_user.id)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 # ——— /stats —————————————————————————————————————————————— #

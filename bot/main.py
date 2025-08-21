@@ -9,6 +9,7 @@ from typing import Optional
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 
 from bot.config import settings, VERSION
 from bot.middlewares import UserMiddleware, ErrorMiddleware
@@ -89,6 +90,39 @@ def _signal_handler(signum, frame):
     raise SystemExit(0)
 
 
+async def _configure_bot_commands(bot: Bot) -> None:
+    """Регистрирует slash-команды в меню Telegram."""
+    # Команды по умолчанию (для всех пользователей)
+    user_commands = [
+        BotCommand(command="start", description="Приветствие и информация"),
+        BotCommand(command="help", description="Справка по командам"),
+        BotCommand(command="img", description="Сгенерировать изображение"),
+        BotCommand(command="reminders", description="Список напоминаний"),
+        BotCommand(command="stats", description="Ваша статистика расходов"),
+        BotCommand(command="reset", description="Очистить историю и файлы"),
+        BotCommand(command="cancel", description="Отменить текущую операцию"),
+    ]
+    await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
+
+    # Админские команды — только в чате админа
+    try:
+        admin_id = int(settings.admin_id) if settings.admin_id else None
+    except Exception:
+        admin_id = None
+    if admin_id:
+        admin_commands = user_commands + [
+            BotCommand(command="stat", description="Общая статистика"),
+            BotCommand(command="models", description="Доступные модели"),
+            BotCommand(command="setmodel", description="Сменить модель"),
+            BotCommand(command="checkmodel", description="Проверка модели"),
+            BotCommand(command="limits", description="Информация о лимитах"),
+            BotCommand(command="status", description="Статус системы"),
+            BotCommand(command="update", description="Проверить обновление"),
+            BotCommand(command="pricing", description="Цены моделей"),
+        ]
+        await bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=admin_id))
+
+
 async def main():
     """Основная функция запуска бота."""
     # Инициализация БД только один раз при старте
@@ -111,6 +145,12 @@ async def main():
     dp.include_router(router)  # Главный роутер из bot/__init__.py уже содержит admin_update
 
     logger.info(f"🚀 Запуск GPTTG бота версии {VERSION}")
+
+    # Настраиваем slash-команды в меню Telegram
+    try:
+        await _configure_bot_commands(bot)
+    except Exception as e:
+        logger.warning(f"Не удалось зарегистрировать slash-команды: {e}")
 
     # Запускаем планировщики в фоне
     reminders_task = start_reminders_scheduler(bot)

@@ -4,16 +4,18 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Tuple
 
 from aiogram import Bot
 
-from bot.utils.db import get_conn
+from bot.utils.db import get_conn, get_user_timezone
 from bot.utils.log import logger
 from bot.utils.openai import OpenAIClient
 from bot.config import settings
+from bot.utils.datetime_context import utc_to_user_local
 
 
 STALE_PICK_SECONDS = 60  # если picked_at старше — считаем задачу «осиротевшей»
@@ -188,13 +190,17 @@ async def _handle_one(bot: Bot, r: Reminder) -> None:
             shift = random.uniform(-jitter, jitter)
             await asyncio.sleep(max(0.0, shift))
 
+        # Локальное время пользователя для понятного текста
+        user_tz = await get_user_timezone(r.user_id)
+        local_time = utc_to_user_local(r.due_at, user_tz)
+        tz_label = "Мск" if (user_tz or "").lower() in {"europe/moscow", "europe\moscow"} else user_tz or "лок. время"
+
         # Формируем краткий запрос к модели на основе напоминания
-        dt_utc = r.due_at
         instruction = (
             "Сформируй одно короткое уведомление по сработавшему напоминанию. "
             "Сообщение должно быть лаконичным и понятным. Если уместно, можешь добавить полезный контекст (например, краткую сводку погоды, дорожную ситуацию, время), но избегай лишней болтовни."
         )
-        user_msg = f"Напоминание: {r.text}. Сработало сейчас (UTC {dt_utc})."
+        user_msg = f"Напоминание: {r.text}. Сработало в {local_time} ({tz_label})."
         content = [{
             "type": "message",
             "role": "user",
@@ -220,7 +226,12 @@ async def _handle_one(bot: Bot, r: Reminder) -> None:
             await db.commit()
 
         # Отправляем
-        await bot.send_message(r.chat_id, response_text, disable_notification=r.silent)
+        if response_text and response_text.strip():
+            await bot.send_message(r.chat_id, response_text, disable_notification=r.silent)
+        else:
+            # Фолбэк — всё равно отправим понятное уведомление с временем
+            plain = f"🔔 Напоминание: {r.text}\nСработало в {local_time} ({tz_label})."
+            await bot.send_message(r.chat_id, plain, disable_notification=r.silent)
 
         # Помечаем статус и fired_at
         await _mark_status(r.id, "done")
@@ -234,7 +245,10 @@ async def _handle_one(bot: Bot, r: Reminder) -> None:
         logger.error(f"reminder {r.id} handling failed: {e}")
         # Фолбэк: не блокируем остальные напоминания
         try:
-            text = f"🔔 Напоминание: {r.text}" if not r.text.lower().startswith("напоминание") else r.text
+            user_tz = await get_user_timezone(r.user_id)
+            local_time = utc_to_user_local(r.due_at, user_tz)
+            tz_label = "Мск" if (user_tz or "").lower() in {"europe/moscow", "europe\moscow"} else user_tz or "лок. время"
+            text = f"🔔 Напоминание: {r.text}\nСработало в {local_time} ({tz_label})."
             await bot.send_message(r.chat_id, text, disable_notification=r.silent)
             await _mark_status(r.id, "done")
         except Exception:

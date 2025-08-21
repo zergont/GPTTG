@@ -5,6 +5,7 @@ import json
 import asyncio
 from datetime import datetime, timezone, timedelta
 import openai
+import pytz
 
 from bot.config import settings
 from bot.utils.db import get_conn, get_user_timezone, set_user_timezone
@@ -69,6 +70,54 @@ class ChatManager:
         else:
             meta["silent"] = bool(base_silent)
         return json.dumps(meta, ensure_ascii=False) if meta else None
+
+    @staticmethod
+    def _parse_when_to_utc(when: str) -> datetime | None:
+        """Парсит относительные ('in 5m/2h/1d/30s') и абсолютные строки времени в UTC.
+        Абсолютные без TZ трактуются в Europe/Moscow.
+        Поддержка форматов: ISO8601 (с T или пробелом), 'YYYY-MM-DD HH:MM[:SS]', 'YYYY-MM-DDTHH:MM[:SS]Z', с оффсетом.
+        """
+        if not when or not isinstance(when, str):
+            return None
+        s = when.strip()
+        # relative: in 10m/2h/1d/30s
+        m = re.match(r"^in\s+(\d+)\s*([smhd]|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$", s, re.IGNORECASE)
+        if m:
+            qty = int(m.group(1))
+            unit = m.group(2).lower()
+            if unit in ("s", "sec", "secs", "second", "seconds"):
+                delta = timedelta(seconds=qty)
+            elif unit in ("m", "min", "mins", "minute", "minutes"):
+                delta = timedelta(minutes=qty)
+            elif unit in ("h", "hr", "hrs", "hour", "hours"):
+                delta = timedelta(hours=qty)
+            else:
+                delta = timedelta(days=qty)
+            return datetime.now(timezone.utc) + delta
+        # Normalize ISO: allow space instead of T
+        iso = s.replace(" ", "T")
+        # support trailing Z
+        if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?Z$", iso):
+            iso = iso.replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(iso)
+            if dt.tzinfo is None:
+                # assume Europe/Moscow for naive
+                msktz = pytz.timezone('Europe/Moscow')
+                dt = msktz.localize(dt)
+            return dt.astimezone(timezone.utc)
+        except Exception:
+            pass
+        # Fallback try: YYYY-MM-DD HH:MM[:SS]
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                dt = datetime.strptime(s, fmt)
+                msktz = pytz.timezone('Europe/Moscow')
+                dt = msktz.localize(dt)
+                return dt.astimezone(timezone.utc)
+            except Exception:
+                continue
+        return None
 
     @staticmethod
     async def _handle_schedule_reminder_tool(chat_id: int, user_id: int, args: Dict[str, Any]) -> Tuple[str | None, Dict[str, Any] | None]:
@@ -162,6 +211,68 @@ class ChatManager:
         if not created:
             return [], {"ok": False, "error": "no_valid_items"}
         return acks, {"ok": True, "created": created, "count": len(created)}
+
+    @staticmethod
+    async def _handle_cancel_reminders_tool(chat_id: int, user_id: int, args: Dict[str, Any]) -> Tuple[str | None, Dict[str, Any] | None]:
+        """Отменяет будущие (status='scheduled') напоминания текущего чата/пользователя по простым критериям.
+        Поддерживаемые параметры:
+          - ids: [int]               — точные идентификаторы напоминаний
+          - text_contains: str       — фильтр по подстроке в тексте напоминания (регистронезависимо)
+          - only_future: bool=True   — отменять только будущие напоминания (due_at >= now UTC)
+          - limit: int=50            — верхний предел на количество отменяемых записей
+        Возвращает краткое подтверждение и JSON с деталями.
+        """
+        ids = args.get("ids")
+        text_contains = str(args.get("text_contains", "")).strip()
+        only_future = args.get("only_future")
+        if only_future is None:
+            only_future = True
+        only_future = bool(only_future)
+        try:
+            limit = int(args.get("limit") or 50)
+        except Exception:
+            limit = 50
+        limit = max(1, min(limit, 200))
+
+        where = ["chat_id = ?", "user_id = ?", "status = 'scheduled'"]
+        params: List[Any] = [chat_id, user_id]
+        if isinstance(ids, list) and ids:
+            placeholders = ",".join(["?"] * len(ids))
+            where.append(f"id IN ({placeholders})")
+            params.extend([int(x) for x in ids if str(x).isdigit()])
+        if text_contains:
+            where.append("LOWER(text) LIKE ?")
+            params.append(f"%{text_contains.lower()}%")
+        if only_future:
+            where.append("due_at >= CURRENT_TIMESTAMP")
+        where_sql = " AND ".join(where)
+
+        canceled_ids: List[int] = []
+        try:
+            async with get_conn() as db:
+                # Выберем подходящие id с ограничением
+                cur = await db.execute(
+                    f"SELECT id FROM reminders WHERE {where_sql} ORDER BY due_at ASC LIMIT ?",
+                    (*params, limit),
+                )
+                rows = await cur.fetchall()
+                target_ids = [r[0] for r in rows] if rows else []
+                if not target_ids:
+                    return "ℹ️ Подходящих напоминаний не найдено.", {"ok": True, "canceled": [], "count": 0}
+                placeholders = ",".join(["?"] * len(target_ids))
+                await db.execute(
+                    f"UPDATE reminders SET status='canceled', executed_at=CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
+                    (*target_ids,),
+                )
+                await db.commit()
+                canceled_ids = target_ids
+        except Exception as e:
+            logger.warning(f"Не удалось отменить напоминания: {e}")
+            return None, {"ok": False, "error": str(e)}
+
+        count = len(canceled_ids)
+        ack = f"❎ Отменено напоминаний: {count}"
+        return ack, {"ok": True, "canceled": canceled_ids, "count": count}
 
     @staticmethod
     def _has_reminder_intent(user_content: List[Dict[str, Any]]) -> bool:
@@ -266,6 +377,17 @@ class ChatManager:
                             "call_id": call_id,
                             "output": json.dumps(tool_out, ensure_ascii=False)
                         })
+                elif name == "cancel_reminders":
+                    args = ChatManager._extract_args_dict(args_obj)
+                    ack, tool_out = await ChatManager._handle_cancel_reminders_tool(chat_id, user_id, args)
+                    if ack:
+                        acks.append(ack)
+                    if call_id and tool_out is not None:
+                        fc_outputs.append({
+                            "type": "function_call_output",
+                            "call_id": call_id,
+                            "output": json.dumps(tool_out, ensure_ascii=False)
+                        })
                 elif name == "set_timezone":
                     args = ChatManager._extract_args_dict(args_obj)
                     tool_out = await ChatManager._handle_set_timezone_tool(user_id, args)
@@ -320,6 +442,17 @@ class ChatManager:
                                         "call_id": call_id2,
                                         "output": json.dumps(tool_out, ensure_ascii=False)
                                     })
+                            elif name2 == "cancel_reminders":
+                                args = ChatManager._extract_args_dict(args2)
+                                ack, tool_out = await ChatManager._handle_cancel_reminders_tool(chat_id, user_id, args)
+                                if ack:
+                                    acks.append(ack)
+                                if call_id2 and tool_out is not None:
+                                    fc_outputs.append({
+                                        "type": "function_call_output",
+                                        "call_id": call_id2,
+                                        "output": json.dumps(tool_out, ensure_ascii=False)
+                                    })
             except Exception:
                 continue
         return acks, fc_outputs
@@ -339,6 +472,18 @@ class ChatManager:
             logger.info("Запрос в OpenAI (chat=%s, prev=%s)", chat_id, previous_response_id)
 
             current_model = await ModelsManager.get_current_model()
+
+            if previous_response_id is None:
+                async with get_conn() as db:
+                    cur = await db.execute(
+                        "SELECT last_response FROM chat_history WHERE chat_id = ?",
+                        (chat_id,)
+                    )
+                    row = await cur.fetchone()
+                    previous_response_id = row[0] if row else None
+
+            original_prev_id = previous_response_id
+            preserve_prev_id: str | None = None
 
             if previous_response_id is None:
                 async with get_conn() as db:
@@ -454,6 +599,21 @@ class ChatManager:
                             }
                         },
                         "required": ["items"],
+                        "additionalProperties": False
+                    }
+                })
+                tools_list.append({
+                    "type": "function",
+                    "name": "cancel_reminders",
+                    "description": "Cancel user's scheduled reminders by simple criteria (ids, text substring). Applies to this chat/user.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "ids": {"type": "array", "items": {"type": "integer"}},
+                            "text_contains": {"type": "string"},
+                            "only_future": {"type": "boolean", "default": True},
+                            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
+                        },
                         "additionalProperties": False
                     }
                 })
@@ -624,6 +784,8 @@ class ChatManager:
                                 request_params_noprev = dict(request_params)
                                 request_params_noprev.pop("previous_response_id", None)
                                 response = await client.responses.create(**request_params_noprev)
+                                # Сохраним старый prev-id, чтобы не переписать историю
+                                preserve_prev_id = original_prev_id
                         except Exception as e2:
                             logger.warning(f"Не удалось закрыть зависшие tool-calls {call_ids}: {e2}")
                             # Попробуем сразу выполнить без previous_response_id как последний шанс
@@ -631,6 +793,7 @@ class ChatManager:
                                 request_params_noprev = dict(request_params)
                                 request_params_noprev.pop("previous_response_id", None)
                                 response = await client.responses.create(**request_params_noprev)
+                                preserve_prev_id = original_prev_id
                             except Exception:
                                 return (
                                     "⚠️ Контекст ожидал завершения вызова инструмента и не смог быть восстановлен. "
@@ -643,6 +806,7 @@ class ChatManager:
                             request_params_noprev = dict(request_params)
                             request_params_noprev.pop("previous_response_id", None)
                             response = await client.responses.create(**request_params_noprev)
+                            preserve_prev_id = original_prev_id
                         except Exception:
                             return (
                                 "⚠️ Контекст ожидает завершения вызова инструмента. Повторите запрос ещё раз."
@@ -744,7 +908,7 @@ class ChatManager:
             async with get_conn() as db:
                 await db.execute(
                     "REPLACE INTO chat_history(chat_id, last_response) VALUES (?, ?)",
-                    (chat_id, last_resp_id),
+                    (chat_id, preserve_prev_id or last_resp_id),
                 )
                 await db.execute(
                     "INSERT INTO usage(chat_id, user_id, tokens, cost, model) VALUES (?, ?, ?, ?, ?)",
@@ -752,44 +916,14 @@ class ChatManager:
                 )
                 await db.commit()
 
-            # Возвращаем ACK и текст ассистента вместе, если оба есть
-            if acks_total and visible_text:
-                return "\n".join(acks_total) + "\n\n" + visible_text
-            if visible_text:
-                return visible_text
+            # Итоговый текст: основной ответ + подтверждения инструментов
             if acks_total:
-                return "\n".join(acks_total)
-            return ""
+                ack_text = "\n".join(acks_total)
+                if visible_text:
+                    result_text = f"{visible_text}\n\n{ack_text}"
+                else:
+                    result_text = ack_text
+            else:
+                result_text = visible_text or ""
 
-    @staticmethod
-    def _parse_when_to_utc(when_str: str) -> datetime | None:
-        try:
-            if not when_str:
-                return None
-            s = when_str.strip()
-            if s and (s[0].isdigit() or s.startswith("+") or s.startswith("-")):
-                try:
-                    dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
-                except Exception:
-                    return None
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt.astimezone(timezone.utc)
-            if s.lower().startswith("in "):
-                total_seconds = 0
-                for amount, unit in re.findall(r"(\d+)\s*([smhd])", s.lower()):
-                    v = int(amount)
-                    if unit == 's':
-                        total_seconds += v
-                    elif unit == 'm':
-                        total_seconds += v * 60
-                    elif unit == 'h':
-                        total_seconds += v * 3600
-                    elif unit == 'd':
-                        total_seconds += v * 86400
-                if total_seconds <= 0:
-                    return None
-                return datetime.now(timezone.utc) + timedelta(seconds=total_seconds)
-        except Exception:
-            return None
-        return None
+            return result_text

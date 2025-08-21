@@ -71,9 +71,15 @@ async def send_long_html_message(message: Message, text: str, max_length: int = 
         text: HTML текст для отправки
         max_length: Максимальная длина одного сообщения
     """
+    # Не отправляем пустые сообщения — Telegram вернёт BadRequest
+    if not text or not text.strip():
+        return
+
     chunks = split_long_html_message(text, max_length)
     
     for chunk in chunks:
+        if not chunk or not chunk.strip():
+            continue
         await message.answer(chunk, parse_mode="HTML")
 
 
@@ -85,7 +91,7 @@ def escape_markdown_v2(text: str) -> str:
     Экранирует спецсимволы для Telegram MarkdownV2.
     """
     escape_chars = r'_*[]()~`>#+-=|{}.!'
-    return ''.join(f'\\{c}' if c in escape_chars else c for c in text)
+    return ''.join(f'\\{c}' if c in escape_chars else c for c in escape_chars)
 
 
 def send_long_message_v2(text: str, max_length: int = 4096) -> list[str]:
