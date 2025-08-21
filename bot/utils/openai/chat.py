@@ -594,50 +594,59 @@ class ChatManager:
                 return "\n".join(lines)
             except openai.BadRequestError as e:
                 error_message = str(e)
-                # Лечим кейс: "No tool output found for function call call..."
+                # Лечим кейс: "No tool output found for function call call_..."
                 if previous_response_id and ("No tool output found for function call" in error_message or "tool output" in error_message):
-                    call_id_match = re.search(r"function call\s+(call_[A-Za-z0-9]+)", error_message)
-                    missing_call_id = call_id_match.group(1) if call_id_match else None
-                    if missing_call_id:
-                        logger.warning(f"Незакрытый tool-call {missing_call_id}. Отправляю фиктивный function_call_output и повторяю запрос.")
+                    # Извлекаем все call_id, а не один
+                    call_ids = list(dict.fromkeys(re.findall(r"(call_[A-Za-z0-9]+)", error_message)))
+                    if call_ids:
+                        logger.warning(f"Незакрытые tool-calls {call_ids}. Отправляю фиктивные function_call_output и повторяю запрос.")
                         try:
-                            close_resp = await asyncio.wait_for(
-                                client.responses.create(
-                                    model=current_model,
-                                    previous_response_id=previous_response_id,
-                                    input=[{
-                                        "type": "function_call_output",
-                                        "call_id": missing_call_id,
-                                        "output": json.dumps({"ok": False, "error": "aborted_by_system"}, ensure_ascii=False)
-                                    }],
-                                    store=True,
-                                ),
-                                timeout=12,
+                            # Закроем все висящие tool-calls одним батчем
+                            fc_outputs_batch = [{
+                                "type": "function_call_output",
+                                "call_id": cid,
+                                "output": json.dumps({"ok": False, "error": "aborted_by_system"}, ensure_ascii=False)
+                            } for cid in call_ids]
+                            close_resp = await client.responses.create(
+                                model=current_model,
+                                previous_response_id=previous_response_id,
+                                input=fc_outputs_batch,
+                                store=True,
                             )
                             new_prev = getattr(close_resp, 'id', previous_response_id)
                             request_params_retry = dict(request_params)
                             request_params_retry["previous_response_id"] = new_prev
-                            response = await asyncio.wait_for(
-                                client.responses.create(**request_params_retry),
-                                timeout=20,
-                            )
-                        except asyncio.TimeoutError:
-                            logger.warning("Таймаут при закрытии зависшего tool-call/повторе запроса")
-                            return (
-                                "⚠️ Таймаут при закрытии зависшего вызова инструмента. "
-                                "Повторите запрос ещё раз."
-                            )
+                            try:
+                                response = await client.responses.create(**request_params_retry)
+                            except Exception as e_retry:
+                                # Финальный фолбэк: попробуем один раз без previous_response_id, чтобы сбросить зацикливание ветки
+                                logger.warning(f"Повтор после закрытия tool-calls не удался: {e_retry}. Пробую без previous_response_id (resync thread)")
+                                request_params_noprev = dict(request_params)
+                                request_params_noprev.pop("previous_response_id", None)
+                                response = await client.responses.create(**request_params_noprev)
                         except Exception as e2:
-                            logger.warning(f"Не удалось закрыть tool-call {missing_call_id}: {e2}")
-                            return (
-                                "⚠️ Предыдущий шаг ожидал вывод инструмента, из-за чего запрос не выполнен. "
-                                "Повторите запрос ещё раз."
-                            )
+                            logger.warning(f"Не удалось закрыть зависшие tool-calls {call_ids}: {e2}")
+                            # Попробуем сразу выполнить без previous_response_id как последний шанс
+                            try:
+                                request_params_noprev = dict(request_params)
+                                request_params_noprev.pop("previous_response_id", None)
+                                response = await client.responses.create(**request_params_noprev)
+                            except Exception:
+                                return (
+                                    "⚠️ Контекст ожидал завершения вызова инструмента и не смог быть восстановлен. "
+                                    "Повторите попытку позже."
+                                )
                     else:
                         logger.warning("Не удалось извлечь call_id из сообщения ошибки tool output")
-                        return (
-                            "⚠️ Контекст ожидает завершения вызова инструмента. Повторите запрос ещё раз."
-                        )
+                        # Финальный фолбэк: единоразово без previous_response_id
+                        try:
+                            request_params_noprev = dict(request_params)
+                            request_params_noprev.pop("previous_response_id", None)
+                            response = await client.responses.create(**request_params_noprev)
+                        except Exception:
+                            return (
+                                "⚠️ Контекст ожидает завершения вызова инструмента. Повторите запрос ещё раз."
+                            )
                 else:
                     # Прочие 400: покажем расшифровку без смены модели
                     logger.warning(f"Проблема с моделью {current_model}: {error_message}")
