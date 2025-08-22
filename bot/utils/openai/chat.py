@@ -728,29 +728,63 @@ class ChatManager:
                         except Exception:
                             continue
 
+                # Форматируем сообщение лаконично и без дублей времени ожидания
+                def _fmt_duration(sec: int) -> str:
+                    try:
+                        sec = max(0, int(sec))
+                    except Exception:
+                        return "несколько секунд"
+                    parts: List[str] = []
+                    h, rem = divmod(sec, 3600)
+                    m, s = divmod(rem, 60)
+                    if h:
+                        parts.append(f"{h} ч")
+                    if m:
+                        parts.append(f"{m} мин")
+                    if s or not parts:
+                        parts.append(f"{s} сек")
+                    return " ".join(parts)
+
+                wait_sec_val: int | None = None
+                for v in (retry_after_sec, reset_tokens_sec, reset_req_sec):
+                    if v is None:
+                        continue
+                    try:
+                        wait_sec_val = int(v)
+                        break
+                    except Exception:
+                        continue
+                wait_pretty = _fmt_duration(wait_sec_val) if wait_sec_val is not None else None
+
                 title = "⏳ <b>Превышен лимит OpenAI</b>"
                 info_lines: List[str] = []
                 if remaining_tokens is not None or reset_tokens_sec is not None:
                     info_lines.append(f"🔢 Осталось токенов: <code>{remaining_tokens or '0'}</code>")
-                    if reset_tokens_sec is not None:
-                        info_lines.append(f"🕒 Сброс токенов через: <code>{reset_tokens_sec}</code> сек")
+                    if reset_tokens_sec is not None and wait_sec_val is None:
+                        # если нет retry-after, подсветим время до сброса токенов
+                        info_lines.append(f"🕒 Сброс токенов через: <code>{_fmt_duration(int(reset_tokens_sec))}</code>")
                 if remaining_req is not None or reset_req_sec is not None:
                     info_lines.append(f"📨 Осталось запросов: <code>{remaining_req or '0'}</code>")
-                    if reset_req_sec is not None:
-                        info_lines.append(f"🕒 Сброс запросов через: <code>{reset_req_sec}</code> сек")
-                wait_hint = retry_after_sec or reset_tokens_sec or reset_req_sec
-                if not info_lines and wait_hint:
-                    info_lines.append(f"🕒 Повторите через: <code>{wait_hint}</code> сек")
+                    if reset_req_sec is not None and wait_sec_val is None:
+                        info_lines.append(f"🕒 Сброс запросов через: <code>{_fmt_duration(int(reset_req_sec))}</code>")
+                if not info_lines and wait_pretty:
+                    info_lines.append(f"🕒 Повторите через: <code>{wait_pretty}</code>")
 
                 lines: List[str] = [title]
                 if info_lines:
                     lines.append("")
                     lines.extend(info_lines)
-                lines.append("")
-                lines.append("💡 Рекомендации:")
-                lines.append("• /setmodel → gpt-4o-mini (дешевле)")
-                lines.append(f"• Подождите {wait_hint or 'несколько'} секунд")
-                lines.append("• Упростите запрос")
+                # Рекомендации без дублирования времени
+                tips: List[str] = []
+                if current_model != "gpt-4o-mini":
+                    tips.append("• /setmodel → gpt-4o-mini (дешевле)")
+                tips.append("• Упростите запрос")
+                if not info_lines and wait_pretty:
+                    tips.append(f"• Подождите {wait_pretty}")
+                if tips:
+                    lines.append("")
+                    lines.append("💡 Рекомендации:")
+                    lines.extend(tips)
                 return "\n".join(lines)
             except openai.BadRequestError as e:
                 error_message = str(e)
