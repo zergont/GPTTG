@@ -728,7 +728,7 @@ class ChatManager:
                         except Exception:
                             continue
 
-                # Форматируем сообщение лаконично и без дублей времени ожидания
+                # Форматируем сообщение в plain text (без HTML), чтобы не конфликтовать с экранированием
                 def _fmt_duration(sec: int) -> str:
                     try:
                         sec = max(0, int(sec))
@@ -756,31 +756,32 @@ class ChatManager:
                         continue
                 wait_pretty = _fmt_duration(wait_sec_val) if wait_sec_val is not None else None
 
-                title = "⏳ <b>Превышен лимит OpenAI</b>"
-                info_lines: List[str] = []
-                if remaining_tokens is not None or reset_tokens_sec is not None:
-                    info_lines.append(f"🔢 Осталось токенов: <code>{remaining_tokens or '0'}</code>")
-                    if reset_tokens_sec is not None and wait_sec_val is None:
-                        # если нет retry-after, подсветим время до сброса токенов
-                        info_lines.append(f"🕒 Сброс токенов через: <code>{_fmt_duration(int(reset_tokens_sec))}</code>")
-                if remaining_req is not None or reset_req_sec is not None:
-                    info_lines.append(f"📨 Осталось запросов: <code>{remaining_req or '0'}</code>")
-                    if reset_req_sec is not None and wait_sec_val is None:
-                        info_lines.append(f"🕒 Сброс запросов через: <code>{_fmt_duration(int(reset_req_sec))}</code>")
-                if not info_lines and wait_pretty:
-                    info_lines.append(f"🕒 Повторите через: <code>{wait_pretty}</code>")
-
-                lines: List[str] = [title]
-                if info_lines:
+                lines: List[str] = ["⏳ Превышен лимит OpenAI"]
+                # Информация
+                if wait_pretty:
                     lines.append("")
-                    lines.extend(info_lines)
-                # Рекомендации без дублирования времени
+                    lines.append(f"🕒 Повторите через: {wait_pretty}")
+                if remaining_tokens is not None or reset_tokens_sec is not None:
+                    lines.append(f"🔢 Осталось токенов: {remaining_tokens or 'неизвестно'}")
+                    if reset_tokens_sec is not None and (wait_sec_val is None or int(reset_tokens_sec) > wait_sec_val):
+                        lines.append(f"🕒 Сброс токенов через: {_fmt_duration(int(reset_tokens_sec))}")
+                if remaining_req is not None or reset_req_sec is not None:
+                    lines.append(f"📨 Осталось запросов: {remaining_req or 'неизвестно'}")
+                    if reset_req_sec is not None and (wait_sec_val is None or int(reset_req_sec) > wait_sec_val):
+                        lines.append(f"🕒 Сброс запросов через: {_fmt_duration(int(reset_req_sec))}")
+
+                # Рекомендации
                 tips: List[str] = []
                 if current_model != "gpt-4o-mini":
                     tips.append("• /setmodel → gpt-4o-mini (дешевле)")
                 tips.append("• Упростите запрос")
-                if not info_lines and wait_pretty:
-                    tips.append(f"• Подождите {wait_pretty}")
+                if not wait_pretty and (reset_tokens_sec or reset_req_sec):
+                    # если точного retry-after нет, но есть время сброса, добавим подсказку
+                    hint = reset_tokens_sec or reset_req_sec
+                    try:
+                        tips.append(f"• Подождите {_fmt_duration(int(hint))}")
+                    except Exception:
+                        pass
                 if tips:
                     lines.append("")
                     lines.append("💡 Рекомендации:")
@@ -850,33 +851,33 @@ class ChatManager:
                     logger.warning(f"Проблема с моделью {current_model}: {error_message}")
                     if "does not have access" in error_message:
                         return (
-                            f"❌ Нет доступа к модели <code>{current_model}</code>.\n"
+                            f"❌ Нет доступа к модели {current_model}.\n"
                             f"Попросите доступ у админа или выберите другую модель через /setmodel."
                         )
                     elif "not supported with the Responses API" in error_message:
                         return (
-                            f"❌ Модель <code>{current_model}</code> не поддерживает Responses API.\n"
+                            f"❌ Модель {current_model} не поддерживает Responses API.\n"
                             f"Выберите совместимую модель через /setmodel."
                         )
                     elif "does not support image inputs" in error_message:
                         return (
-                            f"❌ Модель <code>{current_model}</code> не поддерживает изображения.\n"
+                            f"❌ Модель {current_model} не поддерживает изображения.\n"
                             f"Отправьте текстовый запрос или смените модель через /setmodel."
                         )
                     else:
                         short = error_message[:200]
-                        return f"❌ Проблема с моделью <code>{current_model}</code>: {short}"
+                        return f"❌ Проблема с моделью {current_model}: {short}"
             except openai.PermissionDeniedError as e:
                 error_message = str(e)
                 logger.warning(f"Проблема с моделью {current_model}: {error_message}")
                 if "does not have access" in error_message:
                     return (
-                        f"❌ Нет доступа к модели <code>{current_model}</code>.\n"
+                        f"❌ Нет доступа к модели {current_model}.\n"
                         f"Попросите доступ у админа или выберите другую модель через /setmodel."
                     )
                 else:
                     short = error_message[:200]
-                    return f"❌ Проблема с моделью <code>{current_model}</code>: {short}"
+                    return f"❌ Проблема с моделью {current_model}: {short}"
             except Exception as e:
                 logger.error(f"OpenAI:unexpected error: {e}")
                 return f"❌ ПроизошлаUnexpected ошибка: {str(e)[:100]}..."
