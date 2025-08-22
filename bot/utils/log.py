@@ -40,28 +40,35 @@ def _purge_old_logs() -> None:
 # Очищаем логи до настройки обработчиков
 _purge_old_logs()
 
-# Настраиваем обработчики логов
+# Потоковый обработчик (stdout) всегда включен
 log_handlers = [logging.StreamHandler(sys.stdout)]
 
-# Добавляем файловый обработчик с ротацией, если включен debug режим
-if getattr(settings, "debug_mode", False):
+# Файловый обработчик с ротацией теперь используется и в проде,
+# но с разными уровнями:
+#  - DEBUG_MODE=1 → пишем всё (DEBUG)
+#  - DEBUG_MODE=0 → пишем только ошибки (ERROR)
+try:
     os.makedirs("logs", exist_ok=True)
-
-    # Размер в байтах (MAX_LOG_MB * 1024 * 1024)
     max_bytes = getattr(settings, "max_log_mb", 5) * 1024 * 1024
-
-    # RotatingFileHandler с ограничением размера и количества backup файлов
     rotating_handler = RotatingFileHandler(
         filename="logs/bot.log",
         maxBytes=max_bytes,
-        backupCount=3,  # Храним 3 резервные копии
-        encoding="utf-8"
+        backupCount=3,
+        encoding="utf-8",
     )
-
+    rotating_handler.setLevel(logging.DEBUG if getattr(settings, "debug_mode", False) else logging.ERROR)
     log_handlers.append(rotating_handler)
-    print(f"📝 Логи будут записываться в файл с ограничением {max_bytes // (1024*1024)} МБ")
+    print(
+        f"📝 Логи пишутся в logs/bot.log (уровень: "
+        f"{'DEBUG' if getattr(settings, 'debug_mode', False) else 'ERROR'}; "
+        f"лимит {max_bytes // (1024*1024)} МБ)"
+    )
+except Exception as e:
+    print(f"[log] Не удалось создать файловый обработчик: {e}")
 
-# Настраиваем базовое логирование
+# Уровень корневого логгера:
+#  - DEBUG_MODE=1 → DEBUG (и stdout, и файл получают debug)
+#  - DEBUG_MODE=0 → INFO (stdout INFO+, файл отфильтрует до ERROR)
 logging.basicConfig(
     level=logging.DEBUG if getattr(settings, "debug_mode", False) else logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

@@ -1,7 +1,7 @@
 aiogram==3.21.0
 aiohttp==3.12.13
 aiosqlite==0.21.0
-openai>=1.100.0
+openai>=1.101.0
 python-dotenv==1.1.1
 backoff==2.2.1
 pytz==2024.1
